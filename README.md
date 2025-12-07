@@ -5,13 +5,18 @@ readme.md
 K-attention is a novel network architecture that effectively utilizes limited omics data by integrating biological priors, achieving performance superior to existing methods. This repository is the official implementation of [](https://arxiv.org/).
 
 ##Directory structure
-KattentionProject/
-├── Kattn-sim-dev/                                        # Code for the simulation module
+K-attentionProject/
+├── Kattn-sim-dev/                                        
 │   ├── resources/                                        # Preprocessed data storage
 │   ├── results/                                          # Output results
 │   ├── src/                                              # Main scripts
 │   │   ├── kattn/                                        # Dataset construction and model architecture
-│   │   ├── run/                                          # Training and visualization scripts
+│   │   ├── simulation/                                   # Code for the simulation module
+│   │   │   ├── Draw_kernel.py                            # Visualize trained K-attention kernels
+│   │   │   ├── run_bmk.py                                # Training pipeline
+│   │   │   ├── Snakefile                                 # Snakemake batch submission file
+│   │   │   └── Train.py                                  # Batch training script
+│   │   ├── crispr/                                       # Code for the crispr module
 │   │   │   ├── Draw_kernel.py                            # Visualize trained K-attention kernels
 │   │   │   ├── run_bmk.py                                # Training pipeline
 │   │   │   ├── Snakefile                                 # Snakemake batch submission file
@@ -30,8 +35,9 @@ KattentionProject/
 │   │   │   ├── New_logo_all.py                           # Logo plot visualization
 │   │   │   └── Train_KNET.py                             # Batch training submission script
 ├── rbp.yml                                               # Environment dependencies for RBP task
-├── simu.yml                                              # Environment dependencies for simulation
+├── simu.yml                                              # Environment dependencies for simulation and crispr
 └── README.md                                             # Project documentation
+
 
 ## Requirements
 
