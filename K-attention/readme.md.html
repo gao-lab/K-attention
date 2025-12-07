@@ -1,0 +1,61 @@
+﻿<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>readme.md</title>
+  <link rel="stylesheet" href="https://stackedit.io/style.css" />
+</head>
+
+<body class="stackedit">
+  <div class="stackedit__html"><h1 id="k-attention-a-biologically-informed-attention-operator-for-data-efficient-omics-pattern-recognition">K-attention: A Biologically Informed Attention Operator for Data-Efficient Omics Pattern Recognition</h1>
+<p>K-attention is a novel network architecture that effectively utilizes limited omics data by integrating biological priors, achieving performance superior to existing methods. This repository is the official implementation of <a href="https://arxiv.org/"></a>.</p>
+<h2 id="requirements">Requirements</h2>
+<p>To test K-attention:</p>
+<pre class=" language-setup"><code class="prism  language-setup">conda env create -f ./simu.yml -n kattn-sim
+</code></pre>
+<p>To apply K-attention to the RNA-RBP binding prediction task:</p>
+<pre class=" language-setup"><code class="prism  language-setup">conda env create -f ./rbp.yml -n kattn-rbp
+</code></pre>
+<h2 id="k-attention-operator">K-attention Operator</h2>
+<p>For the PyTorch implementation of the K-attention operator, see the KattentionV4 section in ./Kattn-sim-dev/src/kattn/kattention.py.</p>
+<p>When using the K-attention operator, you need to pass the following four main parameters:</p>
+<ol>
+<li><strong>channel_size</strong>: Number of channels in the input data.</li>
+<li><strong>kernel_size</strong>: Length of the K-attention kernel.</li>
+<li><strong>num_kernels</strong>: Number of K-attention kernels to use.</li>
+<li><strong>reverse</strong>: Indicates forward or backward interactions.</li>
+</ol>
+<h2 id="simulated-data-generation">Simulated Data Generation</h2>
+<p>To generate the reverse-complement dataset, run:</p>
+<pre class=" language-train"><code class="prism  language-train">python ./Kattn-sim-dev/src/kattn/simus/simugeneration.py
+</code></pre>
+<p>To apply K-attention to the RNA-RBP binding prediction task:</p>
+<pre class=" language-train"><code class="prism  language-train">python ./Kattn-sim-dev/src/kattn/simus/simu_markov_entropy.py --entropy &lt;target entropy [0-2]&gt; --num &lt;number of dataset&gt;
+</code></pre>
+<h2 id="rbp-data-preparation">RBP Data Preparation</h2>
+<p>We downloaded the original dataset from Sun et al. (available at <a href="https://github.com/kuixu/PrismNet">https://github.com/kuixu/PrismNet</a>). The downloaded data should be placed in ./Kattention_aten_test/external/RBP/</p>
+<p>Next, to process the raw data into a form suitable for model input, run:</p>
+<pre class=" language-train"><code class="prism  language-train">python ./Kattention_aten_test/external/RBP/code/generateData.py
+</code></pre>
+<h2 id="training">Training</h2>
+<p>To train the model for reverse-complement or  first-order Markov, run this command:</p>
+<pre class=" language-train"><code class="prism  language-train">python ./Kattn-sim-dev/src/run/run_bmk.py --model-type &lt;model&gt; --test-config &lt;data&gt;
+</code></pre>
+<p>To train the model for RNA-RBP binding prediction task, run this command:</p>
+<pre class=" language-train"><code class="prism  language-train">python -u ./Kattention_aten_test/script/RBP/main.py &lt;data&gt; &lt;K-attention kernel size&gt; &lt;kernel number&gt; &lt;random seed&gt; &lt;model&gt; &lt;optimizer&gt;
+</code></pre>
+<h2 id="plot-the-k-attention-kernel">Plot the K-attention Kernel</h2>
+<p>After training is complete, the corresponding K-attention kernel can be plotted:</p>
+<pre class=" language-eval"><code class="prism  language-eval">python ./Kattn-sim-dev/src/run/Draw_kernel.py --model-type &lt;model&gt; --test-config &lt;data&gt;
+</code></pre>
+<blockquote></blockquote>
+<h2 id="extract-high-attention-regions-hars">Extract High Attention Regions (HARs)</h2>
+<p>To extract High Attention Regions from the sequence, run:</p>
+<pre class=" language-eval"><code class="prism  language-eval">python ./Kattention_aten_test/script/RBP/HAR_forward_kdeplot.py
+</code></pre>
+</div>
+</body>
+
+</html>

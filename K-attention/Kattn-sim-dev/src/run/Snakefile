@@ -1,0 +1,82 @@
+from snakemake.utils import min_version
+import os
+
+shell.prefix("set +u;")
+#shell.suffix("set -u")
+
+def get_max_lr(model_type):
+    if model_type.startswith("transformer"):
+        return 1e-5
+    elif model_type.startswith("kattn"):
+        return 1e-2
+    elif model_type.startswith("cnn"):
+        return 1e-4
+    else:
+        return 1e-4  # 默认值，适用于未匹配的情况
+
+
+min_version("7.0.0")
+localrules: all, clear_all
+workdir: "/Kattn-sim-dev/results"
+
+#test_configs = ["abs-ran_fix1","abs-ran_fix2","abs-ran_pwm","abs-ran_rand","absolute_fix1","absolute_fix2","absolute_pwm","absolute_rand","random_fix1","random_fix2","random_pwm","random_rand","relative_fix1","relative_fix2","relative_pwm","relative_rand"]
+#model_types = [
+#    "transformer_cls", "transformer_cls_kmer", "mha", "cnn", "kattn_v4_rev"
+#]
+
+test_configs = ["markov_1_0","markov_1_25","markov_1_5","markov_1_75",'markov_2_0']
+#model_types = [
+#    "transformer_cls", "transformer_cls_kmer", "mha", "cnn", "kattn_v4_rev"
+#]
+model_types = [
+    "cnn","transformer_cls","kattn_v4_mask"
+]
+num_replicates = 1
+
+rule all:
+    input:
+        expand(
+            "tb_logs/{test_config}/{model_type}/lightning_logs/version_{version}",
+            test_config=test_configs,
+            model_type=model_types,
+            version=list(range(num_replicates))
+        )
+
+rule clear_all:
+    shell:
+        "rm -rf *"
+
+rule cache_dsts:
+    output:
+        directory("_cache_dsts/{test_config}")
+    log:
+        stdout="logs/cache_dsts/{test_config}.out",
+        stderr="logs/cache_dsts/{test_config}.err"
+    conda:
+        "kattn-sim"
+        #"environment.yml"
+        #"/mambaforge/envs/kattn-sim"
+    params:
+        script=workflow.source_path("run_bmk.py")
+    shell:
+        """
+        which conda;
+        echo $CONDA PREFIX;
+        python {params.script} --cache-run --test-config {wildcards.test_config} >{log.stdout} 2>{log.stderr}
+        """
+rule test_cls:
+    input:
+        "_cache_dsts/{test_config}"
+    output:
+        directory("tb_logs/{test_config}/{model_type}/lightning_logs/version_{version}")
+    conda:
+        "kattn-sim"
+    params:
+#      max_lr=lambda w: 1e-5 if w.model_type.startswith("transformer") else 1e-4,
+#      max_lr = lambda w: 1e-5 if w.model_type.startswith("transformer") else (1e-2 if w.model_type.startswith("kattn") else 1e-4)
+#        max_lr = get_max_lr(w.model_type)
+        max_lr=lambda wildcards: get_max_lr(wildcards.model_type),  # 使用 lambda 获取学习率
+        script=workflow.source_path("run_bmk.py")
+    shell:
+        "python {params.script} --model-type {wildcards.model_type} --test-config {wildcards.test_config} "
+        "--max-lr {params.max_lr} --version {wildcards.version}"
