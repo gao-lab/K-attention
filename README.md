@@ -7,11 +7,14 @@ K-attention is a novel network architecture that effectively utilizes limited om
 ##Directory structure
 K-attentionProject/
 
-├── Kattn-sim-dev/                                        
+├── Kattn-sim-dev/
+
 │   ├── resources/                                        # Preprocessed data storage
 
 │   ├── results/                                          # Output results
+
 │   ├── src/                                              # Main scripts
+
 │   │   ├── kattn/                                        # Dataset construction and model architecture
 │   │   ├── simulation/                                   # Code for the simulation module
 │   │   │   ├── Draw_kernel.py                            # Visualize trained K-attention kernels
