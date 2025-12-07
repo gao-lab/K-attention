@@ -4,6 +4,35 @@ readme.md
 
 K-attention is a novel network architecture that effectively utilizes limited omics data by integrating biological priors, achieving performance superior to existing methods. This repository is the official implementation of [](https://arxiv.org/).
 
+##Directory structure
+KattentionProject/
+├── Kattn-sim-dev/                                        # Code for the simulation module
+│   ├── resources/                                        # Preprocessed data storage
+│   ├── results/                                          # Output results
+│   ├── src/                                              # Main scripts
+│   │   ├── kattn/                                        # Dataset construction and model architecture
+│   │   ├── run/                                          # Training and visualization scripts
+│   │   │   ├── Draw_kernel.py                            # Visualize trained K-attention kernels
+│   │   │   ├── run_bmk.py                                # Training pipeline
+│   │   │   ├── Snakefile                                 # Snakemake batch submission file
+│   │   │   └── Train.py                                  # Batch training script
+├── Kattention_aten_test/                                 # Code for RBP-related experiments
+│   ├── external/                                         # Raw data generation and storage
+│   ├── results/                                          # Model output results
+│   ├── scripts/                                          # Core scripts
+│   │   ├── RBP/
+│   │   │   ├── log/                                      # Training logs
+│   │   │   ├── PrismNet/                                 # PrismNet evaluation functions
+│   │   │   ├── build.py                                  # Model definition
+│   │   │   ├── HAR_forward.py                            # Script to visualize HARs
+│   │   │   ├── L1_train.py                               # Training routine
+│   │   │   ├── main.py                                   # Training entry point
+│   │   │   ├── New_logo_all.py                           # Logo plot visualization
+│   │   │   └── Train_KNET.py                             # Batch training submission script
+├── rbp.yml                                               # Environment dependencies for RBP task
+├── simu.yml                                              # Environment dependencies for simulation
+└── README.md                                             # Project documentation
+
 ## Requirements
 
 To test K-attention:
