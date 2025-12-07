@@ -5,16 +5,12 @@ readme.md
 K-attention is a novel network architecture that effectively utilizes limited omics data by integrating biological priors, achieving performance superior to existing methods. This repository is the official implementation of [](https://arxiv.org/).
 
 ##Directory structure
+```text
 K-attentionProject/
-
-├── Kattn-sim-dev/
-
+├── Kattn-sim-dev/                                        
 │   ├── resources/                                        # Preprocessed data storage
-
 │   ├── results/                                          # Output results
-
 │   ├── src/                                              # Main scripts
-
 │   │   ├── kattn/                                        # Dataset construction and model architecture
 │   │   ├── simulation/                                   # Code for the simulation module
 │   │   │   ├── Draw_kernel.py                            # Visualize trained K-attention kernels
@@ -42,6 +38,8 @@ K-attentionProject/
 ├── rbp.yml                                               # Environment dependencies for RBP task
 ├── simu.yml                                              # Environment dependencies for simulation and crispr
 └── README.md                                             # Project documentation
+```
+
 
 
 ## Requirements
