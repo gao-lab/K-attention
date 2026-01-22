@@ -208,20 +208,6 @@ class LightningTestModel(L.LightningModule):
         self.lambda_l1 = getattr(self.hparams, "lambda_wattn_l1", 1e-3)
         self.lambda_group = getattr(self.hparams, "lambda_wattn_group", 1e-2)
         self.lambda_ortho = getattr(self.hparams, "lambda_wattn_ortho", 0.0)
-    # def forward(self, **kwargs):
-    #     if self.need_amp:
-    #         with torch.autocast(device_type="cuda", dtype=torch.float16):
-    #             return self.model(**kwargs)
-    #     else:
-    #         return self.model(**kwargs)
-    # def forward(
-    #     self,
-    #     input_ids,
-    #     mean_eff,
-    #     CRISPRoff_score,         # 注意大小写，需与 batch 的键一致
-    #     **kwargs,                 # 兜底不需要的额外字段
-    # ):
-    #     return self.model(input_ids,mean_eff,CRISPRoff_score)
 
     def forward(
         self,
@@ -1360,5 +1346,5 @@ if __name__ == "__main__":
     )
 
     data_module.setup(stage="test")  # 或者 "validate"，看你想用哪个 split
-    loader = data_module.train_dataloader()  # 若用验证集: data_module.val_dataloader()
+    loader = data_module.test_dataloader()  # 若用验证集: data_module.val_dataloader()
     results = run_full_analysis(wrapped_model, loader, out_dir=OUT_DIR, max_batches=None, model_type=model_type)

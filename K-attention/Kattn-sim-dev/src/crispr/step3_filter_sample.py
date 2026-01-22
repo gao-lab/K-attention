@@ -200,7 +200,10 @@ def export_max_attn_logits_to_csv(
                 dna = ids_to_dna(ids_np[b])
                 rna = extract_guide_rna(dna, start=5, length=20)
                 seq1 = dna[i[b]-2:i[b]-2+5]
-                seq2 = dna[j[b]-2:j[b]-2+5][::-1]
+                if layer_name=="Kattention2.kattn":
+                    seq2 = dna[j[b]-2:j[b]-2+5][::-1]
+                elif layer_name=="Kattention1.kattn":
+                    seq2 = dna[j[b]-2:j[b]-2+5]
                 rows.append({
                     "idx": sample_offset + b,
                     "head": head_idx,
@@ -292,8 +295,8 @@ if __name__ == "__main__":
     
     OUT_DIR = f'../../results/Crispr/{test_config}/{model_type}/attn_logits'
     # RESULTS_DIR = f'../../results/Crispr/{test_config}/{model_type}/{num_ds}/{version}/'
-    head_idx = 0
-    kattn = "Kattention2.kattn"
+    head_idx = 1
+    kattn = "Kattention1.kattn"
     os.makedirs(f"{OUT_DIR}/{kattn}", exist_ok=True)
     # "ge"(>=), "gt"(>), "le"(<=), "lt"(<)
 

@@ -47,6 +47,12 @@ try:
 except Exception:
     HAS_LOGOMAKER = False
 
+import matplotlib as mpl
+plt.style.use("default")
+
+mpl.rcParams['pdf.fonttype'] = 42
+mpl.rcParams['ps.fonttype'] = 42
+
 # def _find_module_by_name(model: torch.nn.Module, name: str) -> torch.nn.Module:
 #     for n, m in model.named_modules():
 #         if n == name:
@@ -265,29 +271,95 @@ def plot_max_hist(max_vals: torch.Tensor, out_png: str | Path, bins: int = 50, t
     out_png = Path(out_png); out_png.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_png.as_posix(), bbox_inches="tight"); plt.close()
 
-def plot_corr_scatter(max_vals: torch.Tensor, labels: torch.Tensor, out_png: str | Path, title: str = ""):
+# def plot_corr_scatter(max_vals: torch.Tensor, labels: torch.Tensor, out_png: str | Path, title: str = ""):
+#     x = max_vals.detach().cpu().numpy()
+#     y = labels.detach().cpu().numpy()
+#     # Pearson & Spearman
+#     pr, pp = stats.pearsonr(x, y) if np.std(x) > 0 else (0.0, 1.0)
+#     sr, sp = stats.spearmanr(x, y)
+#     # 回归线
+#     A = np.vstack([x, np.ones_like(x)]).T
+#     a, b = np.linalg.lstsq(A, y, rcond=None)[0]  # y ≈ a*x + b
+#     yhat = a*x + b
+
+#     plt.figure(figsize=(5.5,5), dpi=160)
+#     plt.scatter(x, y, s=10, alpha=0.6)
+#     xs = np.linspace(x.min(), x.max(), 200)
+#     ys = a*xs + b
+#     plt.plot(xs, ys, lw=2)
+#     plt.xlabel("max attn_logits")
+#     plt.ylabel("label")
+#     plt.title(title or f"Corr: pearson={pr:.3f} (p={pp:.1e}), spearman={sr:.3f} (p={sp:.1e})")
+#     out_png = Path(out_png); out_png.parent.mkdir(parents=True, exist_ok=True)
+#     plt.savefig(out_png.as_posix(), bbox_inches="tight"); plt.close()
+
+#     return {"pearson_r": pr, "pearson_p": pp, "spearman_rho": sr, "spearman_p": sp, "slope": a, "intercept": b}
+
+def plot_corr_scatter(
+    max_vals: torch.Tensor,
+    labels: torch.Tensor,
+    out_png: str | Path,
+    title: str = "",
+    also_save_pdf: bool = True,
+):
     x = max_vals.detach().cpu().numpy()
     y = labels.detach().cpu().numpy()
+
     # Pearson & Spearman
     pr, pp = stats.pearsonr(x, y) if np.std(x) > 0 else (0.0, 1.0)
     sr, sp = stats.spearmanr(x, y)
-    # 回归线
-    A = np.vstack([x, np.ones_like(x)]).T
-    a, b = np.linalg.lstsq(A, y, rcond=None)[0]  # y ≈ a*x + b
-    yhat = a*x + b
 
-    plt.figure(figsize=(5.5,5), dpi=160)
+    # 回归线：y ≈ a*x + b
+    A = np.vstack([x, np.ones_like(x)]).T
+    a, b = np.linalg.lstsq(A, y, rcond=None)[0]
+
+    plt.figure(figsize=(5.5, 5), dpi=160)
     plt.scatter(x, y, s=10, alpha=0.6)
-    xs = np.linspace(x.min(), x.max(), 200)
-    ys = a*xs + b
+
+    xs = np.linspace(x.min(), x.max(), 200) if x.size > 0 else np.array([0.0, 1.0])
+    ys = a * xs + b
     plt.plot(xs, ys, lw=2)
+
     plt.xlabel("max attn_logits")
     plt.ylabel("label")
-    plt.title(title or f"Corr: pearson={pr:.3f} (p={pp:.1e}), spearman={sr:.3f} (p={sp:.1e})")
-    out_png = Path(out_png); out_png.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(out_png.as_posix(), bbox_inches="tight"); plt.close()
 
-    return {"pearson_r": pr, "pearson_p": pp, "spearman_rho": sr, "spearman_p": sp, "slope": a, "intercept": b}
+    # 标题（你原来的逻辑保留）
+    main_title = title or f"Corr: pearson={pr:.3f} (p={pp:.1e}), spearman={sr:.3f} (p={sp:.1e})"
+    plt.title(main_title)
+
+    # ✅ 额外把 pearson r（以及 spearman）标注到图内（左上角）
+    ann = f"Pearson r = {pr:.3f}\nSpearman ρ = {sr:.3f}"
+    plt.text(
+        0.02, 0.98, ann,
+        transform=plt.gca().transAxes,
+        ha="left", va="top",
+        fontsize=10,
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8, edgecolor="none"),
+    )
+
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+
+    # 保存 PNG
+    plt.savefig(out_png.as_posix(), bbox_inches="tight")
+
+    # ✅ 同时保存 PDF
+    if also_save_pdf:
+        out_pdf = out_png.with_suffix(".pdf")
+        plt.savefig(out_pdf.as_posix(), bbox_inches="tight")
+
+    plt.close()
+
+    return {
+        "pearson_r": float(pr),
+        "pearson_p": float(pp),
+        "spearman_rho": float(sr),
+        "spearman_p": float(sp),
+        "slope": float(a),
+        "intercept": float(b),
+        "png_path": out_png.as_posix(),
+        "pdf_path": out_png.with_suffix(".pdf").as_posix() if also_save_pdf else None,
+    }
 
 def filter_by_threshold(
     max_vals: torch.Tensor,
@@ -738,8 +810,8 @@ if __name__ == "__main__":
     data_module.setup(stage="train")  # 或者 "validate"，看你想用哪个 split
     loader = data_module.train_dataloader()  # 若用验证集: data_module.val_dataloader()
     
-    # "ge"(>=), "gt"(>), "le"(<=), "lt"(<)
-    head_idx = 0
+    # "ge"(>=), "gt"(>), "le"(<=), "lt"(<)  
+    head_idx = 2
     mode = 'ge'
     kattn = "Kattention2.kattn"
 

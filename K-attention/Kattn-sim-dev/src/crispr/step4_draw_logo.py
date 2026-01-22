@@ -6,9 +6,12 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import logomaker
 import string
-
+import pdb
 # ===== 1) 读取并拆分 seq1;seq2 =====
-csv_path = "../../results/Crispr/doench2014-Hs/KNET_Crispr/attn_logits/Kattention2.kattn/0.csv"  # 换成你的路径
+csv_path = "../../results/Crispr/doench2014-Hs/KNET_Crispr/attn_logits/Kattention1.kattn/1.csv"  # 换成你的路径
+save_ = csv_path.split("/")
+save_name = save_[-2].split(".")[0] + '_' + save_[-1].split(".")[0]
+
 df = pd.read_csv(csv_path)
 
 # 列名就是 'seq1;seq2'，形如 "GGTCG;CGTCT"
@@ -87,9 +90,15 @@ for frag in range(kernel_len):
 non_pwm_array = torch.stack(non_pwm_list)          # [L, 16]
 clamped_array = torch.clamp(non_pwm_array, min=0)  # <0 归零
 
-# 列名 A..P（16列）
+# # 列名 A..P（16列）
 cols = [chr(i) for i in range(ord('A'), ord('P') + 1)]
 non_pwm_df = pd.DataFrame(clamped_array.numpy(), columns=cols)
+# keys = ['AA','AC','AG','AT',
+#         'CA','CC','CG','CT',
+#         'GA','GC','GG','GT',
+#         'TA','TC','TG','TT']
+
+# non_pwm_df = pd.DataFrame(clamped_array.numpy(), columns=keys)
 
 # ===== 4) 绘制 motif logo =====
 plt.figure(figsize=(8, 4))
@@ -103,16 +112,16 @@ plt.title("Non-PWM Motif Logo", fontsize=14)
 
 # 保存
 dataet_ = "my_dataset"  # 可改
-save_dir = Path(f"../draw/logo/")
+save_dir = Path(f"../draw/logo/{save_name}/")
 save_dir.mkdir(parents=True, exist_ok=True)
 out_path = save_dir / "logo.svg"
 plt.savefig(out_path, bbox_inches='tight', dpi=300, format="svg")
 plt.close()
 print(f"saved to: {out_path}")
 
-letter_ = [chr(i) for i in range(ord('A'), ord('P') + 1)]
-for i in range(17):
-    print(f'{letter_[i]}:{keys[i]}')
+# letter_ = [chr(i) for i in range(ord('A'), ord('P') + 1)]
+# for i in range(17):
+#     print(f'{letter_[i]}:{keys[i]}')
     
 
 # -*- coding: utf-8 -*-
@@ -157,6 +166,30 @@ def pwm_to_information_matrix(
     info_df = pd.DataFrame(R, columns=cols)
     return info_df
 
+def pwm_to_classic_logo_matrix(pwm_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    经典 sequence logo 高度矩阵：
+      H(pos)  = -sum_b p_b log2(p_b)
+      IC(pos) = log2(|alphabet|) - H(pos)  (DNA/RNA 4 -> 2 bits)
+      height  = p_b * IC(pos)
+    输入 pwm_df: (L x 4) 频率矩阵，行和应为 1（或接近 1）。
+    输出: (L x 4) 每个碱基在该位点的“高度”(bits)，非负。
+    """
+    P = pwm_df.to_numpy(dtype=float)          # (L,4)
+    cols = list(pwm_df.columns)
+    A = P.shape[1]                            # alphabet size, 4
+
+    with np.errstate(divide='ignore', invalid='ignore'):
+        logP = np.where(P > 0, np.log2(P), 0.0)
+        H = -np.sum(P * logP, axis=1, keepdims=True)   # (L,1)
+    IC = np.log2(A) - H                                 # (L,1)
+
+    R = P * IC                                          # (L,4)
+    R = np.clip(R, 0.0, None)                            # 数值稳定：去掉极小负数
+
+    return pd.DataFrame(R, columns=cols)
+
+
 def plot_pwm_logo(
     pwm_df: pd.DataFrame,
     out_png: str | Path,
@@ -171,7 +204,8 @@ def plot_pwm_logo(
     out_png.parent.mkdir(parents=True, exist_ok=True)
 
     # 1) 频率 -> 信息矩阵（p*log2(p/bg)）
-    info_df = pwm_to_information_matrix(pwm_df, background=background)
+    # info_df = pwm_to_information_matrix(pwm_df, background=background)
+    info_df = pwm_to_classic_logo_matrix(pwm_df)
 
     # 2) y 轴上限（可按需调节）
     total_bits_per_pos = info_df.sum(axis=1).to_numpy()
@@ -323,4 +357,5 @@ def main(
     print(f"[done] PWM & logos saved to: {out_dir.resolve()}")
 
 # ===== 执行示例 =====
-main("../../results/Crispr/doench2014-Hs/KNET_Crispr/attn_logits/Kattention2.kattn/0.csv", out_dir="../draw/logo/", truncate_or_pad="truncate", pseudocount=0.0)
+# main("../../results/Crispr/doench2014-Hs/KNET_Crispr/attn_logits/Kattention2.kattn/0.csv", out_dir="../draw/logo/", truncate_or_pad="truncate", pseudocount=0.0)
+main(csv_path, out_dir=f"../draw/logo/{save_name}/", truncate_or_pad="truncate", pseudocount=0.0)
