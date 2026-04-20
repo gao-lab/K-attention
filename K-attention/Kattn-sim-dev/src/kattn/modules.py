@@ -51,6 +51,9 @@ class BaseClassifier(nn.Module):
         }
 
 
+BaseClassifier_reg = BaseClassifier
+
+
 @dataclass
 class CNNMixerConfig:
     num_layers: int = 1

@@ -17,7 +17,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from datasets import load_dataset, load_from_disk
 from transformers import get_scheduler, BertConfig
 
-from kattn.kattention import KattentionModel,KattentionModel_mask,KattentionModel_pos,KNET
+from kattn.kattention import KattentionModel,KattentionModel_mask,KattentionModel_pos,KattentionModel_uncons_mask
 from kattn.transformers import (
     TransformerCLSModel,
     TransformerAttnModel,
@@ -25,7 +25,7 @@ from kattn.transformers import (
     TransformerConfig,
 
 )
-from kattn.cnns import CNNModel
+from kattn.cnns import CNNModel, CNNTransformerModel, CNNTransformerModelMatched
 from kattn.modules import CNNMixerConfig
 
 from kattn.tokenizers import RNATokenizer, RNAKmerTokenizer
@@ -48,7 +48,9 @@ class LightningTestModel(L.LightningModule):
         weight_decay: float = 0.01,
         max_lr: float = 1e-3,
         beta1: float = 0.9,
-        beta2: float = 0.999
+        beta2: float = 0.999,
+        kernel_size: int = 12,
+        num_kernels: int = 64,
     ):
         super().__init__()
         self.auroc_list = []
@@ -127,31 +129,38 @@ class LightningTestModel(L.LightningModule):
                 embedding_method="onehot",
                 kattn_version=model_type.split("_", 1)[-1],
                 vocab_size=len(self.tokenizer),
-                kernel_size=12,
-                num_kernels=128,
+                kernel_size=kernel_size,
+                num_kernels=num_kernels,
             )
         elif model_type == "KNET":
-            self.model = KNET(
-                kernel_size=12,
-                num_kernels=64
+            self.model = KattentionModel_mask(
+                embedding_method="onehot",
+                kattn_version="v4_mask",
+                vocab_size=len(self.tokenizer),
+                kernel_size=kernel_size,
+                num_kernels=num_kernels,
             )
-        # elif model_type == "kattn_v4_pos":
-        #     self.model = KattentionModel_pos(
-        #         embedding_method="onehot",
-        #         kattn_version=model_type.split("_", 1)[-1],
-        #         vocab_size=len(self.tokenizer),
-        #         kernel_size=12,
-        #         num_kernels=128,
-        #         cnn_config = CNNMixerConfig(
-        #                         num_layers=3,
-        #                         in_channels=128,
-        #                         conv_kernel_sizes=[3, 5, 7],  # 查看与层数一致
-        #                         conv_mid_channels=[32, 64, 128]
-        #                     )
-        #     )
+        elif model_type == "KNET_uncons":
+            self.model = KattentionModel_uncons_mask(
+                embedding_method="onehot",
+                kattn_version="v4",
+                vocab_size=len(self.tokenizer),
+                kernel_size=kernel_size,
+                num_kernels=num_kernels,
+            )
+        elif model_type == "cnn_transformer":
+            self.model = CNNTransformerModel(
+                vocab_size=len(self.tokenizer),
+            )
+        elif model_type == "cnn_transformer_pm":
+            self.model = CNNTransformerModelMatched(
+                vocab_size=len(self.tokenizer),
+            )
         else:
             raise ValueError(f"model_type {model_type} not supported")
 
+        self.kernel_size = kernel_size
+        self.num_kernels = num_kernels
         self.epochs = epochs
         self.beta1 = beta1
         self.beta2 = beta2
@@ -227,7 +236,8 @@ class TestDataModule(L.LightningDataModule):
     def __init__(self, dst_name, dst_config, dst_dir, tokenizer,
                  val_split: float = 0.1, seed: int = 11,
                  max_seqlen: int = 512, batch_size: int = 128,
-                 num_procs: int = 4, cache_dir: str | Path = None):
+                 num_procs: int = 4, cache_dir: str | Path = None,
+                 sample_size: int = -1):
         super().__init__()
         self.dst_name = dst_name
         self.dst_config = dst_config
@@ -238,6 +248,10 @@ class TestDataModule(L.LightningDataModule):
         self.max_seqlen = max_seqlen
         self.batch_size = batch_size
         self.num_procs = num_procs
+        self.sample_size = sample_size  # -1 表示全量；>0 表示训练集截取前 N 条
+        # 缓存路径包含 sample_size 以区分不同数据量的缓存
+        cache_suffix = f"_n{sample_size}" if sample_size > 0 else ""
+        self._cache_key = f"{dst_config}{cache_suffix}"
         self.cache_dir = Path(cache_dir) if cache_dir is not None else Path(os.getcwd())
 
         # in a closure to get tokenizer
@@ -257,8 +271,9 @@ class TestDataModule(L.LightningDataModule):
         self.collate_fn = collate_fn
 
     def prepare_data(self):
-        if os.path.exists(os.path.join(self.cache_dir, self.dst_config)):
-            logger.info(f"Found tokenized dataset in {os.path.join(self.cache_dir, self.dst_config)}")
+        cache_path = self.cache_dir / self._cache_key
+        if os.path.exists(str(cache_path)):
+            logger.info(f"Found tokenized dataset in {cache_path}")
             return
 
         # preprocess only on master rank
@@ -270,14 +285,21 @@ class TestDataModule(L.LightningDataModule):
         dataset = dataset.map(
             lambda batch: {"cls_labels": [1 if s.split(" ")[0] == "positive" else 0 for s in batch["description"]]},
             batched=True, remove_columns=["description", "name"])
+
+        # 按 sample_size 截取（shuffle 后取前 N 条，保证类别平衡由 shuffle+stratify 处理）
+        if self.sample_size > 0:
+            n = min(self.sample_size, len(dataset))
+            dataset = dataset.shuffle(seed=self.seed).select(range(n))
+            logger.info(f"Subsampled dataset to {n} sequences")
+
         datasets = dataset.train_test_split(
             test_size=self.val_split, shuffle=True, seed=self.seed
         )
 
-        datasets.save_to_disk(str(self.cache_dir / self.dst_config))
+        datasets.save_to_disk(str(cache_path))
 
     def setup(self, stage):
-        tokenized_datasets = load_from_disk(str(self.cache_dir / self.dst_config))
+        tokenized_datasets = load_from_disk(str(self.cache_dir / self._cache_key))
         self.dsts = tokenized_datasets
 
     def train_dataloader(self):
@@ -302,7 +324,8 @@ class TestDataModule(L.LightningDataModule):
 
 # %%
 def main(
-    model_type: str = "cnn", test_config: str = "abs-ran_pwm", num_kernels: int = 32,
+    model_type: str = "cnn", test_config: str = "abs-ran_pwm", num_kernels: int = 64,
+    kernel_size: int = 12, sample_size: int = -1,
     optimizer_type: str = "adamw", max_epochs: int = 200, patience: int = 20,
     max_lr: float = 1e-3, version: int = 0, cache_run: bool = False
 ):
@@ -310,7 +333,9 @@ def main(
         model_type=model_type,
         optimizer_type=optimizer_type,
         epochs=max_epochs,
-        max_lr=max_lr
+        max_lr=max_lr,
+        kernel_size=kernel_size,
+        num_kernels=num_kernels,
     )
     data_module = TestDataModule(
         dst_name=KATTN_SRC_DIR / "kattn/general_fasta",
@@ -319,7 +344,8 @@ def main(
         tokenizer=wrapped_model.tokenizer,
         cache_dir="_cache_dsts",
         batch_size=512,
-        num_procs=4
+        num_procs=4,
+        sample_size=sample_size,
     )
     if cache_run:
         data_module.prepare_data()
@@ -356,19 +382,33 @@ def main(
     val_auroc = max(wrapped_model.auroc_list)
     print(f"Best_val_auroc {val_auroc} {args.model_type} {args.test_config}")
 
+    import csv, datetime
+    result_csv = Path("../../results/exp_results.csv")
+    result_csv.parent.mkdir(parents=True, exist_ok=True)
+    write_header = not result_csv.exists()
+    with open(result_csv, "a", newline="") as f:
+        w = csv.writer(f)
+        if write_header:
+            w.writerow(["timestamp", "model_type", "test_config", "kernel_size", "num_kernels",
+                        "sample_size", "max_lr", "version", "val_auroc"])
+        w.writerow([datetime.datetime.now().isoformat(), model_type, test_config,
+                    kernel_size, num_kernels, sample_size, max_lr, version, f"{val_auroc:.6f}"])
+
 def parse_args():
     parser = ArgumentParser()
     parser.add_argument("-m", "--model-type", type=str, default="kattn_v4_mask")
-    parser.add_argument("-k", "--num-kernels", type=int, default=32)
+    parser.add_argument("-k", "--num-kernels", type=int, default=64)
+    parser.add_argument("--kernel-size", type=int, default=12,
+                        help="K-attention kernel size (fragment length)")
     parser.add_argument("-c", "--test-config", type=str, default="abs-ran_pwm")
     parser.add_argument("--optimizer-type", type=str, default="adamw")
     parser.add_argument("-e", "--max-epochs", type=int, default=1000)
     parser.add_argument("--max-lr", type=float, default=1e-4)
-
+    parser.add_argument("-n", "--sample-size", type=int, default=-1,
+                        help="Training set size cap (-1 = full dataset)")
     parser.add_argument("-v", "--version", type=int, default=0)
-
     parser.add_argument("--cache-run", action="store_true")
-    parser.add_argument('--patience', default=20, type=int, help='Epoches before early stopping')
+    parser.add_argument('--patience', default=20, type=int, help='Epochs before early stopping')
     return parser.parse_args()
 
 # %%
@@ -378,10 +418,12 @@ if __name__ == "__main__":
     main(
         args.model_type, args.test_config,
         num_kernels=args.num_kernels,
+        kernel_size=args.kernel_size,
+        sample_size=args.sample_size,
         optimizer_type=args.optimizer_type,
         max_epochs=args.max_epochs,
         max_lr=args.max_lr,
         version=args.version,
         cache_run=args.cache_run,
-        patience=args.patience
+        patience=args.patience,
     )
