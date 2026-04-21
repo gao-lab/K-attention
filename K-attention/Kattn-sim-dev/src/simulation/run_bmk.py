@@ -17,7 +17,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from datasets import load_dataset, load_from_disk
 from transformers import get_scheduler, BertConfig
 
-from kattn.kattention import KattentionModel,KattentionModel_mask,KattentionModel_pos,KattentionModel_uncons_mask
+from kattn.kattention import KattentionModel,KattentionModel_mask,KattentionModel_pos,KattentionModel_uncons,KattentionModel_uncons_mask
 from kattn.transformers import (
     TransformerCLSModel,
     TransformerAttnModel,
@@ -32,6 +32,16 @@ from kattn.tokenizers import RNATokenizer, RNAKmerTokenizer
 from torchmetrics.classification import BinaryAccuracy, BinaryAUROC
 import pdb
 import pytorch_lightning.callbacks as callbacks
+
+class AUROCThresholdStop(callbacks.Callback):
+    """Stop training once val_auroc first reaches threshold."""
+    def __init__(self, threshold: float = 0.99):
+        self.threshold = threshold
+
+    def on_validation_epoch_end(self, trainer, pl_module):
+        if pl_module.auroc_list and pl_module.auroc_list[-1] >= self.threshold:
+            trainer.should_stop = True
+            print(f"\n[AUROCThresholdStop] val_auroc {pl_module.auroc_list[-1]:.4f} >= {self.threshold}, stopping.")
 
 basicConfig(level="INFO", format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%m-%d %H:%M:%S")
 logger = getLogger()
@@ -132,7 +142,26 @@ class LightningTestModel(L.LightningModule):
                 kernel_size=kernel_size,
                 num_kernels=num_kernels,
             )
+        elif model_type == "KNET_rc":
+            # RC tasks: plain model, no diagonal mask
+            self.model = KattentionModel(
+                embedding_method="onehot",
+                kattn_version="v4",
+                vocab_size=len(self.tokenizer),
+                kernel_size=kernel_size,
+                num_kernels=num_kernels,
+            )
+        elif model_type == "KNET_uncons_rc":
+            # RC ablation: unconstrained (no groups), no mask
+            self.model = KattentionModel_uncons(
+                embedding_method="onehot",
+                kattn_version="v4",
+                vocab_size=len(self.tokenizer),
+                kernel_size=kernel_size,
+                num_kernels=num_kernels,
+            )
         elif model_type == "KNET":
+            # Markov tasks: diagonal ±2 band mask (1st-order Markov prior)
             self.model = KattentionModel_mask(
                 embedding_method="onehot",
                 kattn_version="v4_mask",
@@ -141,6 +170,7 @@ class LightningTestModel(L.LightningModule):
                 num_kernels=num_kernels,
             )
         elif model_type == "KNET_uncons":
+            # Markov ablation: unconstrained with diagonal mask
             self.model = KattentionModel_uncons_mask(
                 embedding_method="onehot",
                 kattn_version="v4",
@@ -327,7 +357,8 @@ def main(
     model_type: str = "cnn", test_config: str = "abs-ran_pwm", num_kernels: int = 64,
     kernel_size: int = 12, sample_size: int = -1,
     optimizer_type: str = "adamw", max_epochs: int = 200, patience: int = 20,
-    max_lr: float = 1e-3, version: int = 0, cache_run: bool = False
+    max_lr: float = 1e-3, version: int = 0, cache_run: bool = False,
+    batch_size: int = 512, auroc_threshold: float = 0.99,
 ):
     wrapped_model = LightningTestModel(
         model_type=model_type,
@@ -343,7 +374,7 @@ def main(
         dst_dir=KATTN_RESOURCES_DIR,
         tokenizer=wrapped_model.tokenizer,
         cache_dir="_cache_dsts",
-        batch_size=512,
+        batch_size=batch_size,
         num_procs=4,
         sample_size=sample_size,
     )
@@ -351,12 +382,12 @@ def main(
         data_module.prepare_data()
         return
     lr_monitor = callbacks.LearningRateMonitor(logging_interval='epoch')
-    # Early_stopping
     early_stop_callback = callbacks.EarlyStopping(monitor='val_auroc',
                                                   min_delta=0.00,
                                                   patience=patience,
                                                   verbose=False,
                                                   mode="max")
+    auroc_threshold_callback = AUROCThresholdStop(threshold=auroc_threshold)
 
     checkpoint_callback = callbacks.ModelCheckpoint(dirpath=f'../../results/checkpoint/{test_config}/{model_type}',
                                                     filename='best-{epoch:02d}-{val_auroc:.3f}',
@@ -375,7 +406,7 @@ def main(
         check_val_every_n_epoch=1,
         log_every_n_steps=1,
         logger=tb_logger,
-        callbacks=[early_stop_callback,checkpoint_callback,lr_monitor],
+        callbacks=[early_stop_callback, auroc_threshold_callback, checkpoint_callback, lr_monitor],
     )
 
     trainer.fit(wrapped_model, datamodule=data_module)
@@ -385,7 +416,7 @@ def main(
     import csv, datetime
     result_csv = Path("../../results/exp_results.csv")
     result_csv.parent.mkdir(parents=True, exist_ok=True)
-    write_header = not result_csv.exists()
+    write_header = not result_csv.exists() or result_csv.stat().st_size == 0
     with open(result_csv, "a", newline="") as f:
         w = csv.writer(f)
         if write_header:
@@ -409,6 +440,9 @@ def parse_args():
     parser.add_argument("-v", "--version", type=int, default=0)
     parser.add_argument("--cache-run", action="store_true")
     parser.add_argument('--patience', default=20, type=int, help='Epochs before early stopping')
+    parser.add_argument('--batch-size', default=512, type=int, help='Training/val batch size')
+    parser.add_argument('--auroc-threshold', default=0.99, type=float,
+                        help='Stop training immediately when val_auroc >= this value')
     return parser.parse_args()
 
 # %%
@@ -426,4 +460,6 @@ if __name__ == "__main__":
         version=args.version,
         cache_run=args.cache_run,
         patience=args.patience,
+        batch_size=args.batch_size,
+        auroc_threshold=args.auroc_threshold,
     )
