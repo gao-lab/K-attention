@@ -1,0 +1,31 @@
+# =====================================================================
+# K-attention .gitignore
+# =====================================================================
+
+# --- 实验 checkpoint（全部，大文件 ~500MB/个；旧 checkpoint 已 git rm --cached）---
+K-attention/Kattn-sim-dev/results/checkpoint/
+
+# --- 实验结果 CSV（由训练脚本追加写入，不入库，换机器后重新生成）---
+K-attention/Kattn-sim-dev/results/exp_results.csv
+
+# --- HuggingFace datasets 本地缓存（94MB，换机器后 --cache-run 重新生成）---
+K-attention/Kattn-sim-dev/.hf_cache/
+
+# --- 预处理/训练运行时缓存 ---
+K-attention/Kattn-sim-dev/src/simulation/_cache_dsts/
+K-attention/Kattn-sim-dev/src/simulation/tb_logs/
+
+# --- FASTA 索引文件（faidx 自动生成，换机器后自动重建）---
+K-attention/Kattn-sim-dev/resources/*.fxi
+
+# --- Python 缓存 ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# --- 论文草稿 & 回复文件（非代码）---
+*.pdf
+response.docx
+*.docx

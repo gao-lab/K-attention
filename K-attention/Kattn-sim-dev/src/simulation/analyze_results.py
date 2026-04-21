@@ -23,7 +23,7 @@ def load_results():
 
 def exp_a_table(df):
     """Hyperparameter scan: kernel_size × num_kernels pivot for each dataset."""
-    mask = df["model_type"] == "KNET"
+    mask = df["model_type"].isin(["KNET", "KNET_rc"])
     sub = df[mask].copy()
     for dst in sub["test_config"].unique():
         d = sub[sub["test_config"] == dst]

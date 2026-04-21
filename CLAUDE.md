@@ -10,14 +10,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### 当前 Revision 目标（按优先级）
 
-| 编号 | 审稿人 | 要求 | 状态 |
+> **详细进度见** `K-attention/Kattn-sim-dev/revision/PROGRESS.md`
+
+| 编号 | 审稿人 | 要求 | 状态（截至 2026-04-21）|
 |------|--------|------|------|
-| A | R1-1/R2-3 | **超参数敏感性扫描**（kernel_size × num_kernels on abs-ran_fix2 + markov_1_0_50000）| ✅ 正在运行 `run_expA.sh` |
-| B | R1-3/R1-5/R2-1 | **完整学习曲线**（多数据量 × 多seeds，含 cnn_transformer_pm 新基线）| 待 Exp A 完成后启动 `run_expB.sh` |
-| C | R1-4 | **点对点约束消融**（KNET vs KNET_uncons on RBP）| 结果可复用，待整理 |
-| D | R1-2 | 缩小论断范围（"omics pattern recognition"）| 文字修改 |
-| E | R1-6 | 语言润色（口语表达）| 文字修改 |
-| F | R2-2 | 回复 Swin/ARConv 无需新实验（2D视觉架构非 omics 标准基线）| 文字回复 |
+| A | R1-1/R2-3 | **超参数敏感性扫描**（kernel_size × num_kernels）| ✅ **Done**（40 runs，RC 0.875–0.951，Markov 0.824–0.875）|
+| B | R1-3/R1-5/R2-1 | **完整学习曲线**（6模型 × 5数据量 × 3 seeds = 180 runs）| 🔄 **Running**（~149/180，预计 Apr 22 19:00 完成）|
+| C | R1-4 | **点对点约束消融**（KNET_rc vs KNET_uncons_rc，RC+Markov）| ⏳ Pending（Exp B 后启动 `run_expC.sh`）|
+| D | R1-2 | 缩小论断范围（"omics pattern recognition"）| ⏳ 文字修改 |
+| E | R1-6 | 语言润色（口语表达）| ⏳ 文字修改 |
+| F | R2-2 | 回复 Swin/ARConv 无需新实验（2D视觉架构非 omics 标准基线）| ⏳ 文字回复 |
+
+**Exp B 当前运行命令（3并行，GPU ~17GB）：**
+```bash
+# 监控
+ps aux | grep run_bmk | grep -v grep
+tail -f /tmp/expB_parallel.log
+# Exp B 完成后立刻运行 Exp C：
+bash run_expC.sh
+```
 
 ---
 
@@ -52,14 +63,19 @@ conda activate kattn-rbp
 ```bash
 source env_setup.sh   # 必须先执行
 
-# 基础训练（K-attention主模型）
-python run_bmk.py --model-type KNET --test-config abs-ran_fix2 \
-    --kernel-size 12 --num-kernels 64 --max-lr 1e-4 --version 0
+# 基础训练（RC任务用 KNET_rc，Markov任务用 KNET）
+python run_bmk.py --model-type KNET_rc --test-config abs-ran_fix2 \
+    --kernel-size 12 --num-kernels 64 --max-lr 1e-2 --version 0
+python run_bmk.py --model-type KNET --test-config markov_1_0_50000 \
+    --kernel-size 12 --num-kernels 64 --max-lr 1e-2 --version 0
 
-# 可用 model-type：
-#   KNET (=KattentionModel_mask, 模拟主模型), KNET_uncons (消融)
+# 可用 model-type（KNET 系列 lr 均用 1e-2）：
+#   KNET_rc        (=KattentionModel plain，RC任务主模型)
+#   KNET           (=KattentionModel_mask，Markov任务主模型)
+#   KNET_uncons_rc (=KattentionModel_uncons，RC任务消融)
+#   KNET_uncons    (=KattentionModel_uncons_mask，Markov任务消融)
 #   cnn, transformer_cls, transformer_cls_kmer, mha
-#   cnn_transformer, cnn_transformer_pm (新增CNN-TF hybrid)
+#   cnn_transformer, cnn_transformer_pm (CNN-TF hybrid)
 
 # 预处理缓存数据集（必须在训练前执行一次）
 python run_bmk.py --model-type KNET --test-config abs-ran_fix2 --cache-run
@@ -71,9 +87,11 @@ python run_bmk.py --model-type KNET --test-config abs-ran_fix2 --sample-size 500
 python run_bmk.py --model-type KNET --test-config abs-ran_fix2 \
     --kernel-size 6 --num-kernels 16
 
-# 批量实验脚本
-bash run_expA.sh    # 超参数扫描
-bash run_expB.sh    # 学习曲线（Exp A 完成后运行）
+# 批量实验脚本（按执行顺序）
+bash run_expA.sh             # 超参数扫描（✅ 已完成）
+bash run_expB_parallel.sh    # 学习曲线，3并行（🔄 运行中，跳过已完成）
+bash run_expC.sh             # 约束消融（⏳ Exp B 后启动）
+# run_expB.sh = 原始完整版（不跳过），run_expB_resume.sh = 旧的顺序断点续跑版
 
 # 查看实验结果
 python analyze_results.py --exp A
@@ -131,12 +149,18 @@ K-attention/
 
 **模拟实验用类（重要区分）：**
 
-| 类名 | 用途 | forward 签名 |
-|------|------|-------------|
-| `KattentionModel_mask` | 模拟主模型（有约束+对角线mask）→ model_type=`KNET` | `(input_ids, cls_labels, key_padding_mask=None)` |
-| `KattentionModel_uncons_mask` | 消融版→ model_type=`KNET_uncons` | 同上 |
-| `KNET`（line 1131） | **RBP 专用**，有4路并行CNN，不用于模拟实验 | `(input_ids, key_padding_mask, cls_labels)` 必须 |
-| `KNET_uncons`（line 1184） | RBP 消融专用 | 同上 |
+RC 和 Markov 任务使用不同的 wrapper 类（底层 KattentionV4 相同，inductive bias 不同）：
+
+| 类名 | model_type | 任务 | 特点 |
+|------|-----------|------|------|
+| `KattentionModel`（line 570） | `KNET_rc` | **RC 任务主模型** | 无 mask，全注意力矩阵 |
+| `KattentionModel_uncons`（line 749） | `KNET_uncons_rc` | RC 任务消融 | 无 groups 约束，无 mask |
+| `KattentionModel_mask`（line 820） | `KNET` | **Markov 任务主模型** | ±2 对角线 band mask（对应一阶 Markov 先验） |
+| `KattentionModel_uncons_mask`（line 916） | `KNET_uncons` | Markov 任务消融 | 无 groups 约束，保留 mask |
+| `KNET`（line 1131） | — | **RBP 专用，不用于模拟** | 4路并行CNN，forward 签名不同 |
+
+所有模拟 KNET 变体 forward 签名：`(input_ids, cls_labels, key_padding_mask=None)`  
+**推荐 lr = 1e-2**（原始 Snakefile 验证值；1e-4 会导致收敛不足，AUROC 仅 ~0.8）
 
 ### CNN-TF Hybrid baseline（新增，`kattn/cnns.py`）
 
