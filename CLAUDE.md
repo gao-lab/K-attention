@@ -147,16 +147,18 @@ K-attention/
 - 接口：`KattentionV4(channel_size, kernel_size, num_kernels, reverse=False)`
 - **forward 返回 dict**，用 `output["attn_logits"]` 取输出
 
-**模拟实验用类（重要区分）：**
+**模拟实验用类（重要区分，详见 `revision/MODEL_CONFIG.md`）：**
 
 RC 和 Markov 任务使用不同的 wrapper 类（底层 KattentionV4 相同，inductive bias 不同）：
 
-| 类名 | model_type | 任务 | 特点 |
-|------|-----------|------|------|
-| `KattentionModel`（line 570） | `KNET_rc` | **RC 任务主模型** | 无 mask，全注意力矩阵 |
-| `KattentionModel_uncons`（line 749） | `KNET_uncons_rc` | RC 任务消融 | 无 groups 约束，无 mask |
-| `KattentionModel_mask`（line 820） | `KNET` | **Markov 任务主模型** | ±2 对角线 band mask（对应一阶 Markov 先验） |
-| `KattentionModel_uncons_mask`（line 916） | `KNET_uncons` | Markov 任务消融 | 无 groups 约束，保留 mask |
+| 类名 | model_type | 任务 | reverse | band mask |
+|------|-----------|------|---------|-----------|
+| `KattentionModel`（line 570） | `KNET_rc` | **RC 任务主模型** | **True** (`kattn_version="v4_rev"`) | ❌ |
+| `KattentionModel_uncons`（line 749） | `KNET_uncons_rc` | RC 任务消融 | **True** (`kattn_version="v4_rev"`) | ❌ |
+| `KattentionModel_mask`（line 820） | `KNET` | **Markov 任务主模型** | False | ✅ ±2 diagonal |
+| `KattentionModel_uncons_mask`（line 916） | `KNET_uncons` | Markov 任务消融 | False | ✅ ±2 diagonal |
+
+> **reverse=True 的作用**：Key 从翻转序列计算，注意力矩阵捕获正链↔反链互补关系，是 RC 任务 AUROC ~1.0 的关键。去掉 reverse（误用 `v4`）会导致 AUROC 仅 ~0.91。
 | `KNET`（line 1131） | — | **RBP 专用，不用于模拟** | 4路并行CNN，forward 签名不同 |
 
 所有模拟 KNET 变体 forward 签名：`(input_ids, cls_labels, key_padding_mask=None)`  

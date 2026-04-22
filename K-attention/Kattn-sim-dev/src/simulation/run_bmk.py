@@ -143,19 +143,19 @@ class LightningTestModel(L.LightningModule):
                 num_kernels=num_kernels,
             )
         elif model_type == "KNET_rc":
-            # RC tasks: plain model, no diagonal mask
+            # RC tasks: reverse=True (K computed from reversed sequence), no band mask
             self.model = KattentionModel(
                 embedding_method="onehot",
-                kattn_version="v4",
+                kattn_version="v4_rev",
                 vocab_size=len(self.tokenizer),
                 kernel_size=kernel_size,
                 num_kernels=num_kernels,
             )
         elif model_type == "KNET_uncons_rc":
-            # RC ablation: unconstrained (no groups), no mask
+            # RC ablation: unconstrained (no groups), reverse=True, no band mask
             self.model = KattentionModel_uncons(
                 embedding_method="onehot",
-                kattn_version="v4",
+                kattn_version="v4_rev",
                 vocab_size=len(self.tokenizer),
                 kernel_size=kernel_size,
                 num_kernels=num_kernels,
