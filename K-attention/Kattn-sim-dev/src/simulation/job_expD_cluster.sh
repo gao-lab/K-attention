@@ -4,25 +4,30 @@
 #SBATCH --gres=gpu:1
 #SBATCH --mem=32G
 #SBATCH --time=08:00:00
-#SBATCH --output=/lustre/grp/gglab/liut/logs/expD_%A_%a.out
+#SBATCH --output=/lustre/grp/gglab/liut/logs/expD_%j.out
 
-# Usage: called by submit_expD_cluster.sh
-# Args: MODEL N SEED
 MODEL=$1
 N=$2
 SEED=$3
 
-SIMDIR=/lustre/grp/gglab/liut/K-attention/K-attention/Kattn-sim-dev/src/simulation
-cd "$SIMDIR" || exit 1
+# Activate conda environment (must come before env var overrides)
+CONDA_BASE=$(conda info --base 2>/dev/null || echo "$HOME/miniconda3")
+source "$CONDA_BASE/etc/profile.d/conda.sh"
+conda activate kattn-sim
 
-# Fix environment paths for lustre
-export KATTN_SRC_DIR=/lustre/grp/gglab/liut/K-attention/K-attention/Kattn-sim-dev/src
-export KATTN_RESOURCES_DIR=/lustre/grp/gglab/liut/K-attention/K-attention/Kattn-sim-dev/resources
-export HF_DATASETS_CACHE=/lustre/grp/gglab/liut/K-attention/K-attention/Kattn-sim-dev/.hf_cache
+# Override paths AFTER activation so our values take precedence
+LUSTRE=/lustre/grp/gglab/liut/K-attention/K-attention/Kattn-sim-dev
+export KATTN_SRC_DIR=$LUSTRE/src
+export KATTN_RESOURCES_DIR=$LUSTRE/resources
+export HF_DATASETS_CACHE=$LUSTRE/.hf_cache
 export HF_DATASETS_OFFLINE=1
-export PYTHONPATH=$KATTN_SRC_DIR:$PYTHONPATH
+# Prepend our src dir to ensure new kattn overrides any old editable install
+export PYTHONPATH=$KATTN_SRC_DIR:$(echo $PYTHONPATH | tr ':' '\n' | grep -v 'Kattn-sim-dev/src' | tr '\n' ':')
 
-conda run -n kattn-sim python run_bmk.py \
+cd "$KATTN_SRC_DIR/simulation" || exit 1
+
+echo "[ExpD] model=$MODEL n=$N seed=$SEED start=$(date)"
+python run_bmk.py \
     --model-type "$MODEL" \
     --test-config random_rand \
     --sample-size "$N" \
@@ -32,3 +37,4 @@ conda run -n kattn-sim python run_bmk.py \
     --batch-size 128 \
     --auroc-threshold 0.99 \
     --version "$SEED"
+echo "[ExpD] model=$MODEL n=$N seed=$SEED done=$(date)"
