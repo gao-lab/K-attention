@@ -6,7 +6,7 @@
 
 source env_setup.sh
 
-RC_DSTS=("abs-ran_fix2" "relative_fix2" "random_rand")
+RC_DSTS=("abs-ran_fix2" "random_rand")
 MARKOV_DSTS=("markov_1_0_50000")
 SEEDS=(0 1 2)
 MAX_EPOCHS=500
