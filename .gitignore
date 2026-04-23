@@ -29,3 +29,8 @@ __pycache__/
 *.pdf
 response.docx
 *.docx
+
+# --- 本地 AI 助手配置（含服务器 IP、连接信息，不入库）---
+CLAUDE.md
+.claude/
+K-attention/Kattn-sim-dev/revision/MACHINE_192.168.3.17.md
