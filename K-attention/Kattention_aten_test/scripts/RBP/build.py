@@ -43,6 +43,77 @@ def mkdir(path):
         return (False)
 
 
+class CNNTransformerRBP(nn.Module):
+    """CNN-Transformer hybrid for RBP binding prediction (binary classification).
+
+    Structure: input (B, L, 4) -> 3-layer CNN -> 2-layer Transformer -> global max pool
+    -> linear -> sigmoid.
+    """
+    def __init__(self, in_channels=4, outputdim=1,
+                 cnn_channels=(32, 64, 128), tf_hidden=128, tf_layers=2, tf_heads=4):
+        super().__init__()
+        c1, c2, c3 = cnn_channels
+        self.cnn = nn.Sequential(
+            nn.Conv1d(in_channels, c1, kernel_size=3, padding=1), nn.ReLU(), nn.BatchNorm1d(c1),
+            nn.Conv1d(c1, c2, kernel_size=5, padding=2),         nn.ReLU(), nn.BatchNorm1d(c2),
+            nn.Conv1d(c2, c3, kernel_size=7, padding=3),         nn.ReLU(), nn.BatchNorm1d(c3),
+        )
+        self.proj = nn.Linear(c3, tf_hidden) if c3 != tf_hidden else nn.Identity()
+
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=tf_hidden, nhead=tf_heads, dim_feedforward=tf_hidden * 2,
+            dropout=0.1, batch_first=True, norm_first=True,
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=tf_layers)
+        self.linear = nn.Linear(tf_hidden, outputdim)
+
+    def forward(self, x):
+        x = x.permute(0, 2, 1).contiguous().float()    # (B, C, L)
+        x = self.cnn(x)                                 # (B, 128, L)
+        x = x.permute(0, 2, 1)                         # (B, L, 128)
+        x = self.proj(x)
+        x = self.transformer(x)                         # (B, L, tf_hidden)
+        x = x.max(dim=1).values                        # (B, tf_hidden)
+        output = self.linear(x)
+        output = torch.sigmoid(output)
+        return output.squeeze()
+
+
+class CNNTransformerRBPMatched(nn.Module):
+    """Parameter-matched CNN-Transformer hybrid for RBP (~80k params).
+
+    Structure: input (B, L, 4) -> 2-layer CNN(4->32->64) -> 2-layer Transformer(64h, 4head)
+    -> global max pool -> linear -> sigmoid.
+    """
+    def __init__(self, in_channels=4, outputdim=1,
+                 cnn_channels=(32, 64), tf_hidden=64, tf_layers=2, tf_heads=4):
+        super().__init__()
+        c1, c2 = cnn_channels
+        self.cnn = nn.Sequential(
+            nn.Conv1d(in_channels, c1, kernel_size=3, padding=1), nn.ReLU(), nn.BatchNorm1d(c1),
+            nn.Conv1d(c1, c2, kernel_size=5, padding=2),         nn.ReLU(), nn.BatchNorm1d(c2),
+        )
+        self.proj = nn.Linear(c2, tf_hidden) if c2 != tf_hidden else nn.Identity()
+
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=tf_hidden, nhead=tf_heads, dim_feedforward=tf_hidden * 2,
+            dropout=0.1, batch_first=True, norm_first=True,
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=tf_layers)
+        self.linear = nn.Linear(tf_hidden, outputdim)
+
+    def forward(self, x):
+        x = x.permute(0, 2, 1).contiguous().float()    # (B, C, L)
+        x = self.cnn(x)                                 # (B, 64, L)
+        x = x.permute(0, 2, 1)                         # (B, L, 64)
+        x = self.proj(x)
+        x = self.transformer(x)                         # (B, L, tf_hidden)
+        x = x.max(dim=1).values                        # (B, tf_hidden)
+        output = self.linear(x)
+        output = torch.sigmoid(output)
+        return output.squeeze()
+
+
 def buildModel(kernel_size, number_of_kernel, outputdim, modeltype, seqlen=101, device="CPU"):
     """
 
@@ -59,6 +130,10 @@ def buildModel(kernel_size, number_of_kernel, outputdim, modeltype, seqlen=101, 
         net = KNET_plus_seq2(5, kernel_size, number_of_kernel, outputdim)
     elif modeltype == "KNET_plus_ic":
         net = KNET_plus_ic(5, kernel_size, number_of_kernel, outputdim)
+    elif modeltype == "cnn_transformer":
+        net = CNNTransformerRBP(in_channels=4, outputdim=outputdim)
+    elif modeltype == "cnn_transformer_pm":
+        net = CNNTransformerRBPMatched(in_channels=4, outputdim=outputdim)
 
     return net
 

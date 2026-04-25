@@ -82,6 +82,9 @@ def GridSearch(data_set, KernelLen, KernelNum, RandomSeed, Modeltype, path, Data
         trainKattentionPrismnet(path, data_set, KernelNum, KernelLen,
                                 RandomSeed, batch_size, epoch_scheme, DataName, opt=opt, GPUID=GPUID,
                                 outputName=Modeltype)
+    elif Modeltype in ['cnn_transformer', 'cnn_transformer_pm']:
+        trainS(path, data_set, KernelNum, KernelLen,
+               RandomSeed, batch_size, epoch_scheme, DataName, opt=opt, GPUID=GPUID, outputName=Modeltype)
 
 
 def loadData(path, Modeltype=None):

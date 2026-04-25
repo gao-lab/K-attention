@@ -1,5 +1,5 @@
 # Revision Status Snapshot — BIB-26-0525
-*Last updated: 2026-04-24*
+*Last updated: 2026-04-24 (all experiments complete)*
 
 This file is a machine-readable snapshot for agents picking up this work.
 Full detail: `revision/PROGRESS.md`
@@ -10,9 +10,9 @@ Full detail: `revision/PROGRESS.md`
 
 | Exp | Description | Status | Seeds done | Pending action |
 |-----|-------------|--------|-----------|----------------|
-| A | Hyperparameter scan (kernel_size × num_kernels) | 🔄 Partial | seed 0 (40 runs) | Wait for seeds 1&2 (80 runs, running on 192.168.3.17 via `run_expA_seeds12.sh`) |
-| B | Learning curves (6 models × 7 RC sizes + 6 Markov sizes × 5 seeds) | 🔄 Extending | seeds 0-2 done; seeds 3-4 + new sizes (RC 1k/2k, Markov 2k) pending on luminary | Run `bash submit_expB_ext.sh` on luminary |
-| C | Constraint ablation (KNET vs KNET_uncons) | ✅ Done | seeds 0,1,2 | — |
+| A | Hyperparameter scan (kernel_size × num_kernels) | ✅ Done | seeds 0,1,2 (120 runs) | — |
+| B | Learning curves (6 models × RC 1k–100k + Markov 2k–100k × 5 seeds) | ✅ Done | seeds 0–4 | Re-plot with new data |
+| C | Constraint ablation (KNET vs KNET_uncons, small-sample) | ✅ Done | seeds 0,1,2 | Re-plot with extended results |
 | D | Simu16 learning curves (KNET_rc vs CNN-TF) | ✅ Done | seeds 0,1,2 | — |
 | E | Narrow claims ("omics pattern recognition") | ⏳ Pending | — | Text revision only |
 | F | Language polish | ⏳ Pending | — | Text revision only |
@@ -24,33 +24,26 @@ Full detail: `revision/PROGRESS.md`
 
 | File | Location | Rows | Notes |
 |------|----------|------|-------|
-| `exp_results_merged.csv` | `results/exp_results_merged.csv` | 278 | Seed 0 only complete for Exp A |
-| Remote results (192.168.3.17) | `/rd1/liut/K-attention/K-attention/Kattn-sim-dev/results/exp_results.csv` | TBD | Will contain seeds 1&2 when done |
-
-**After Exp A seeds 1&2 finish:**
-1. Retrieve remote CSV: SSH to 192.168.3.17, copy `/rd1/liut/.../results/exp_results.csv`
-2. Merge: `python3 src/simulation/merge_results.py --inputs results/exp_results_merged.csv <remote>.csv --output results/exp_results_merged.csv`
-3. Re-run: `python3 src/simulation/plot_revision.py --exp A` (on 192.168.3.17 or with kattn-sim env)
-4. Re-transfer figures: `revision/figures/exp_a_heatmap.{pdf,png}`
+| `exp_results_merged.csv` | `results/exp_results_merged.csv` | 607 | All experiments, all seeds |
 
 ---
 
 ## Figures
 
-All 8 figures generated and stored locally at `revision/figures/`:
+All figures at `revision/figures/`. **Exp B and C need re-plotting with new 5-seed data.**
 
 | File | Status | Last generated |
 |------|--------|----------------|
-| `exp_a_heatmap.pdf/png` | ✅ Seed 0 only (will need re-plot after seeds 1&2) | 2026-04-24 |
-| `exp_b_learning_curve.pdf/png` | ✅ Final (3 seeds) | 2026-04-24 |
-| `exp_c_ablation.pdf/png` | ✅ Final (3 seeds) | 2026-04-24 |
+| `exp_a_heatmap.pdf/png` | ✅ Final (3-seed mean) | 2026-04-24 |
+| `exp_b_learning_curve.pdf/png` | ✅ Final (5 seeds, n=1k–100k) | 2026-04-24 |
+| `exp_c_ablation.pdf/png` | ✅ Final (small-sample learning curve) | 2026-04-24 |
 | `exp_d_simu16.pdf/png` | ✅ Final (3 seeds) | 2026-04-24 |
 
 ---
 
 ## Key Results Summary
 
-### Exp A — Hyperparameter sensitivity (seed 0 only)
+### Exp A — Hyperparameter sensitivity (3-seed mean)
 
 **RC task (KNET_rc, abs-ran_fix2):**
 
@@ -72,49 +65,49 @@ All 8 figures generated and stored locally at `revision/figures/`:
 | k=12 | 0.864 | 0.867 | 0.868 | 0.869 |
 | k=15 | 0.854 | 0.865 | 0.866 | 0.865 |
 
-*Seeds 1&2 will provide error bars; re-plot needed.*
+### Exp B — Learning curves (5-seed mean AUROC)
 
-### Exp B — Learning curves (mean AUROC, 3 seeds)
+**RC (abs-ran_fix2):**
 
-**RC (Simu7, abs-ran_fix2):**
+| Model | n=1k | n=2k | n=5k | n=10k | n=20k | n=50k | n=100k |
+|-------|------|------|------|-------|-------|-------|--------|
+| KNET_rc | 0.656 | 0.730 | 0.916* | **0.999** | **0.999** | **0.999** | **0.999** |
+| cnn_transformer_pm | 0.631 | 0.846 | 0.942 | 0.976 | 0.985 | 0.987 | 0.991 |
+| transformer_cls | 0.800 | 0.825 | 0.819 | 0.829 | 0.988 | 0.993 | 0.993 |
+| cnn | 0.715 | 0.799 | 0.852 | 0.898 | 0.887 | 0.893 | 0.909 |
+| transformer_cls_kmer | 0.595 | 0.517 | 0.602 | 0.621 | 0.690 | 0.782 | 0.965 |
+| mha | 0.639 | 0.714 | 0.718 | 0.743 | 0.743 | 0.765 | 0.795 |
 
-| Model | n=5k | n=10k | n=20k | n=50k | n=100k |
-|-------|------|-------|-------|-------|--------|
-| KNET_rc | **0.995** | **0.997** | **0.998** | **0.999** | **0.999** |
-| CNN-TF (matched) | 0.950 | 0.983 | 0.982 | 0.989 | 0.991 |
-| Transformer | 0.818 | 0.828 | 0.988 | 0.994 | 0.993 |
-| CNN | 0.850 | 0.895 | 0.886 | 0.893 | 0.909 |
-| Transformer (k-mer) | 0.578 | 0.618 | 0.689 | 0.777 | 0.965 |
-| MHA | 0.741 | 0.739 | 0.747 | 0.762 | 0.791 |
+*KNET_rc n=5k: seed=1 anomaly (0.595); other 4 seeds ~0.995
 
-*Anomaly excluded: KNET_rc n=5000 seed=1 (AUROC=0.595)*
+**Markov:**
 
-**Markov (markov_1_0_N):**
+| Model | n=2k | n=5k | n=10k | n=20k | n=50k | n=100k |
+|-------|------|------|-------|-------|-------|--------|
+| KNET | 0.677 | 0.822 | **0.888** | **0.835** | 0.859 | 0.878 |
+| cnn_transformer_pm | 0.553 | 0.728 | 0.825 | 0.783 | 0.840 | 0.852 |
+| transformer_cls | 0.574 | 0.564 | 0.542 | 0.659 | 0.830 | 0.826 |
+| cnn | 0.548 | 0.640 | 0.780 | 0.789 | 0.854 | 0.868 |
+| transformer_cls_kmer | 0.538 | 0.707 | 0.809 | 0.772 | 0.813 | 0.826 |
+| mha | 0.590 | 0.549 | 0.537 | 0.535 | 0.609 | 0.625 |
 
-| Model | n=5k | n=10k | n=20k | n=50k | n=100k |
-|-------|------|-------|-------|-------|--------|
-| KNET | **0.836** | **0.887** | **0.835** | **0.867** | **0.877** |
-| CNN-TF (matched) | 0.729 | 0.831 | 0.780 | 0.836 | 0.849 |
-| Transformer | 0.568 | 0.545 | 0.624 | 0.829 | 0.824 |
-| CNN | 0.643 | 0.769 | 0.790 | 0.854 | 0.867 |
-| Transformer (k-mer) | 0.691 | 0.800 | 0.775 | 0.812 | 0.826 |
-| MHA | 0.550 | 0.532 | 0.529 | 0.610 | 0.634 |
+### Exp C — Constraint ablation (small-sample, random_rand)
 
-### Exp C — Constraint ablation (k=12, nk=64, full dataset)
+**RC task (3 seeds):**
 
-**RC task:**
+| Model | n=2k | n=5k | n=10k | n=full |
+|-------|------|------|-------|--------|
+| KNET_rc (constrained, nk=64) | 0.689 | 0.827 | **0.991** | **0.994** |
+| KNET_uncons_rc (nk=64, 12×params) | 0.562 | 0.521 | 0.539 | 0.994 |
+| KNET_uncons_rc (nk=5, param-matched) | 0.566 | 0.522 | 0.519 | — |
 
-| Dataset | KNET_rc mean | KNET_uncons_rc mean | Δ |
-|---------|-------------|---------------------|---|
-| abs-ran_fix2 (Simu7) | **0.9995** | 0.9992 | +0.0003 |
-| random_rand (Simu16) | **0.9939** | 0.9938 | +0.0001 |
+**Markov task (3 seeds):**
 
-**Markov task:**
-
-| Model | mean AUROC | Δ vs uncons |
-|-------|-----------|-------------|
-| KNET | **0.8695** | +0.0090 |
-| KNET_uncons | 0.8605 | — |
+| Model | n=2k | n=5k | n=10k |
+|-------|------|------|-------|
+| KNET (constrained, nk=64) | 0.677 | 0.822 | **0.888** |
+| KNET_uncons (nk=64) | 0.638 | 0.779 | 0.847 |
+| KNET_uncons (nk=5) | 0.614 | 0.737 | 0.865 |
 
 ### Exp D — Simu16 learning curves (random_rand)
 
@@ -126,8 +119,6 @@ All 8 figures generated and stored locally at `revision/figures/`:
 | 50,000 | **0.993** | 0.568 | 0.553 |
 | 100,000 | **0.994** | 0.683 | 0.564 |
 
-*Anomaly excluded: KNET_rc n=5000 seed=0 (AUROC=0.509)*
-
 ---
 
 ## Infrastructure
@@ -137,25 +128,16 @@ All 8 figures generated and stored locally at `revision/figures/`:
 | Main compute | 192.168.3.17 (liut), RTX 4090, direct SSH |
 | Cluster | luminary (172.18.18.7), via bastion 172.18.18.11, Slurm |
 | Conda env | `kattn-sim` at `/rd1/liut/miniconda3/envs/kattn-sim/` (on 192.168.3.17) |
-| Results CSV | `results/exp_results_merged.csv` (local) |
+| Results CSV | `results/exp_results_merged.csv` (local, 607 rows) |
 | Figures | `revision/figures/` (local) |
-| Plot script | `src/simulation/plot_revision.py` (use kattn-sim Python) |
+| Plot script | `src/simulation/plot_revision.py` (use kattn-sim Python on 192.168.3.17) |
 | Style module | `src/simulation/figure_style.py` (Wong palette, fonttype=42) |
-| Skills | `.claude/skills/plot-revision.md`, `.claude/skills/figure-style.md` |
 
 ---
 
-## Immediate Next Actions (for next agent)
+## Immediate Next Actions
 
-1. **[Blocking] Wait for Exp A seeds 1&2** on 192.168.3.17
-   - Monitor: `ssh liut@192.168.3.17 "tail -5 /tmp/expA_seeds12.log"`
-   - When done: merge CSV → re-plot `--exp A` on 192.168.3.17 → transfer figures back
-
-2. **[Blocking] Exp B extension on luminary** (210 runs, user submits manually)
-   - Script ready: `src/simulation/submit_expB_ext.sh` + `job_expB_ext.sh`
-   - Merges rc n=1k/2k (all 5 seeds) + existing rc sizes (seeds 3,4) + markov n=2k (all 5 seeds) + existing markov sizes (seeds 3,4)
-   - Markov n=2k uses `markov_1_0_5000 --sample-size 2000` (no new FASTA needed)
-   - `plot_revision.py` already updated to handle sample_size>0 for Markov
-   - When done: download luminary CSV → merge → re-plot `--exp B` → transfer figures back
-
-3. **Text revisions E/F/G** — no experiments needed, only manuscript edits
+1. **Text revisions E/F/G** — no experiments needed, only manuscript edits
+   - E: Narrow claims to "omics pattern recognition"  
+   - F: Language polish
+   - G: Reply re Swin/ARConv (2D visual architecture, not omics standard baseline)

@@ -163,7 +163,7 @@ def plot_exp_b(df: pd.DataFrame):
     _learning_curve_panel(axes[1], mk_df, mk_models, "data_size",
                           "Markov task")
 
-    fig.suptitle("Learning curves (mean ± 1 std, 3 seeds)", fontsize=fs.FS_TITLE, y=1.02)
+    fig.suptitle("Learning curves (mean ± 1 std, 5 seeds)", fontsize=fs.FS_TITLE, y=1.02)
     fig.tight_layout(w_pad=3)
     fs.save(fig, FIGURES_DIR / "exp_b_learning_curve")
     plt.close(fig)
@@ -220,43 +220,102 @@ def _bar_panel(ax, data_df, group_col, hue_col, groups, hues, group_labels, titl
 
 
 def plot_exp_c(df: pd.DataFrame):
-    """Two-panel constraint ablation: RC (left) and Markov (right)."""
+    """Two-panel constraint ablation: learning curves at small sample sizes.
+
+    Left:  RC task (Simu16, random_rand) — KNET_rc vs KNET_uncons_rc (nk=64)
+    Right: Markov task — KNET vs KNET_uncons (nk=64)
+
+    Small-sample points (n=2k,5k,10k) from run_expC_ablation.sh;
+    full-data point from run_expC.sh (sample_size=-1 → mapped to 50 000).
+    """
     fig, axes = plt.subplots(1, 2, figsize=fs.FIG_2COL_TALL)
 
-    # RC
-    rc_models  = ["KNET_rc", "KNET_uncons_rc"]
-    rc_configs = ["abs-ran_fix2", "random_rand"]
-    rc = df[
-        df["model_type"].isin(rc_models) &
-        df["test_config"].isin(rc_configs) &
-        (df["sample_size"] == -1) &
+    # ── RC panel (random_rand, Simu16) ────────────────────────────────────
+    rc_models = ["KNET_rc", "KNET_uncons_rc"]
+    rc_df = df[
+        (df["test_config"] == "random_rand") &
+        (df["model_type"].isin(rc_models)) &
         (df["kernel_size"] == 12) &
-        (df["num_kernels"] == 64)
+        (df["num_kernels"] == 64) &
+        (df["sample_size"].isin([2000, 5000, 10000, -1]))
     ].copy()
-    _bar_panel(axes[0], rc,
-               group_col="test_config", hue_col="model_type",
-               groups=rc_configs, hues=rc_models,
-               group_labels={"abs-ran_fix2": "Simu7\n(abs-ran_fix2)",
-                             "random_rand":  "Simu16\n(random_rand)"},
-               title="RC task")
+    # Map full dataset (-1) to representative size 50 000 for x-axis
+    rc_df["plot_size"] = rc_df["sample_size"].replace(-1, 50000)
 
-    # Markov
+    for model in rc_models:
+        msub = rc_df[rc_df["model_type"] == model]
+        if msub.empty:
+            continue
+        stats = (msub.groupby("plot_size")["val_auroc"]
+                     .agg(["mean", "std"])
+                     .reset_index()
+                     .sort_values("plot_size"))
+        color = fs.MODEL_COLORS.get(model, "#333333")
+        label = fs.MODEL_NAMES.get(model, model)
+        axes[0].plot(stats["plot_size"], stats["mean"], marker="o",
+                     label=label, color=color,
+                     linewidth=fs.LW, markersize=fs.MS)
+        axes[0].fill_between(
+            stats["plot_size"],
+            stats["mean"] - stats["std"].fillna(0),
+            stats["mean"] + stats["std"].fillna(0),
+            alpha=0.15, color=color, linewidth=0,
+        )
+
+    axes[0].set_xscale("log")
+    axes[0].set_xticks([2000, 5000, 10000, 50000])
+    axes[0].set_xticklabels(["2k", "5k", "10k", "full\n(~50k)"],
+                             fontsize=fs.FS_TICK)
+    axes[0].set_ylim(0.45, 1.05)
+    axes[0].set_title("RC task (Simu16, random_rand)", fontsize=fs.FS_TITLE, pad=6)
+    axes[0].set_xlabel("Training set size", fontsize=fs.FS_LABEL)
+    axes[0].set_ylabel("AUROC", fontsize=fs.FS_LABEL)
+    axes[0].tick_params(axis="y", labelsize=fs.FS_TICK)
+    axes[0].legend(fontsize=fs.FS_LEGEND, loc="lower right",
+                   handlelength=1.5, borderpad=0.3)
+
+    # ── Markov panel ──────────────────────────────────────────────────────
     mk_models = ["KNET", "KNET_uncons"]
-    mk_cfg    = "markov_1_0_50000"
-    mk = df[
-        df["model_type"].isin(mk_models) &
-        (df["test_config"] == mk_cfg) &
-        (df["sample_size"] == -1) &
+    mk_df = df[
+        df["test_config"].str.startswith("markov_1_0_") &
+        (df["model_type"].isin(mk_models)) &
         (df["kernel_size"] == 12) &
         (df["num_kernels"] == 64)
     ].copy()
-    _bar_panel(axes[1], mk,
-               group_col="test_config", hue_col="model_type",
-               groups=[mk_cfg], hues=mk_models,
-               group_labels={mk_cfg: "Markov\n(n=50 000)"},
-               title="Markov task")
+    from_config = mk_df["test_config"].str.extract(r"_(\d+)$")[0].astype(int)
+    mk_df["data_size"] = mk_df["sample_size"].where(mk_df["sample_size"] > 0, from_config)
+    mk_df = mk_df[mk_df["data_size"].isin([2000, 5000, 10000, 50000])]
 
-    fig.suptitle("Point-to-point constraint ablation (k=12, full dataset)",
+    for model in mk_models:
+        msub = mk_df[mk_df["model_type"] == model]
+        if msub.empty:
+            continue
+        stats = (msub.groupby("data_size")["val_auroc"]
+                     .agg(["mean", "std"])
+                     .reset_index()
+                     .sort_values("data_size"))
+        color = fs.MODEL_COLORS.get(model, "#333333")
+        label = fs.MODEL_NAMES.get(model, model)
+        axes[1].plot(stats["data_size"], stats["mean"], marker="o",
+                     label=label, color=color,
+                     linewidth=fs.LW, markersize=fs.MS)
+        axes[1].fill_between(
+            stats["data_size"],
+            stats["mean"] - stats["std"].fillna(0),
+            stats["mean"] + stats["std"].fillna(0),
+            alpha=0.15, color=color, linewidth=0,
+        )
+
+    axes[1].set_xscale("log")
+    axes[1].set_ylim(0.45, 1.05)
+    axes[1].set_title("Markov task", fontsize=fs.FS_TITLE, pad=6)
+    axes[1].set_xlabel("Training set size", fontsize=fs.FS_LABEL)
+    axes[1].set_ylabel("AUROC", fontsize=fs.FS_LABEL)
+    axes[1].tick_params(axis="both", labelsize=fs.FS_TICK)
+    axes[1].legend(fontsize=fs.FS_LEGEND, loc="lower right",
+                   handlelength=1.5, borderpad=0.3)
+
+    fig.suptitle("Point-to-point constraint ablation (k=12, nk=64, 3 seeds)",
                  fontsize=fs.FS_TITLE, y=1.02)
     fig.tight_layout(w_pad=3)
     fs.save(fig, FIGURES_DIR / "exp_c_ablation")

@@ -51,7 +51,33 @@ class BaseClassifier(nn.Module):
         }
 
 
-BaseClassifier_reg = BaseClassifier
+class BaseClassifier_reg(nn.Module):
+    def __init__(
+        self, in_features: int, mid_features: int | list[int] = 128
+    ):
+        super().__init__()
+        mid_features = [mid_features] if isinstance(mid_features, int) else mid_features
+        mid_features = [in_features] + mid_features
+        self.model = nn.Sequential(
+            torch.nn.Linear(in_features, 1)
+        )
+
+    def forward(self, x: torch.Tensor, cls_labels: torch.Tensor):
+        """
+        Parameters
+        ------------------------------
+        x: torch.Tensor
+            shape of [batch_size, in_features]
+        cls_labels: torch.Tensor
+            shape of [batch_size,]
+        """
+        pred = self.model(x).squeeze(-1)
+
+        loss = F.mse_loss(pred, cls_labels, reduction='mean')
+        return {
+            "loss": loss,
+            "pred": pred
+        }
 
 
 @dataclass
