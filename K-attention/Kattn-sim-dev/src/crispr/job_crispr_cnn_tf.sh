@@ -10,19 +10,20 @@
 CODE_BASE=/lustre/grp/gglab/liut/K-attention/K-attention/Kattn-sim-dev
 DATA_BASE=/lustre/grp/gglab/liut/Kattn-sim-dev
 
-export KATTN_SRC_DIR=$CODE_BASE/src
-export KATTN_RESOURCES_DIR=$DATA_BASE/resources
-export HF_DATASETS_CACHE=$DATA_BASE/.hf_cache
-export HF_HOME=$HF_DATASETS_CACHE
-export HF_DATASETS_OFFLINE=1
-export PYTHONPATH=$KATTN_SRC_DIR:$PYTHONPATH
-
 SCRIPT_DIR=$CODE_BASE/src/crispr
 RESULT_BASE=$DATA_BASE/results/Crispr
 TASK_LIST=$SCRIPT_DIR/crispr_task_list.txt
 
 source /lustre/grp/gglab/liut/mambaforge/etc/profile.d/conda.sh
 conda activate kattn-sim
+
+# 必须在 conda activate 之后覆盖，否则 conda env 内置路径会覆盖这里的设置
+export KATTN_SRC_DIR=$CODE_BASE/src
+export KATTN_RESOURCES_DIR=$DATA_BASE/resources
+export HF_DATASETS_CACHE=$DATA_BASE/.hf_cache
+export HF_HOME=$HF_DATASETS_CACHE
+export HF_DATASETS_OFFLINE=1
+export PYTHONPATH=$KATTN_SRC_DIR:$PYTHONPATH
 
 # 读取第 SLURM_ARRAY_TASK_ID 行（格式：dataset set model）
 LINE=$(sed -n "$((SLURM_ARRAY_TASK_ID + 1))p" "$TASK_LIST")
