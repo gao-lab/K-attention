@@ -10,9 +10,9 @@
 
 | 编号 | 审稿人 | 要求 | 状态 | 对应脚本 |
 |------|--------|------|------|----------|
-| **A** | R1-1 / R2-3 | 超参数敏感性扫描（kernel_size × num_kernels）| 🔄 **Seed 0 Done**; seeds 1&2 running (2026-04-24) | `run_expA.sh` / `run_expA_seeds12.sh` |
-| **B** | R1-3 / R1-5 / R2-1 | 完整学习曲线（6模型 × 5数据量 × 3 seeds）| 🔄 **扩展中**：补充 n=1k/2k(RC), n=2k(Markov)，seeds 扩展至 5 (2026-04-24) | `run_expB_parallel.sh` / `submit_expB_ext.sh` |
-| **C** | R1-4 | 约束消融（KNET_rc vs KNET_uncons_rc）| ✅ **Done** (2026-04-23) | `run_expC.sh` |
+| **A** | R1-1 / R2-3 | 超参数敏感性扫描（kernel_size × num_kernels）| ✅ **Done** (3 seeds, 2026-04-24) | `run_expA.sh` / `run_expA_seeds12.sh` |
+| **B** | R1-3 / R1-5 / R2-1 | 完整学习曲线（6模型 × 5数据量 × 3 seeds）| ✅ **Done** (5 seeds, 2026-04-24): RC 1k–100k × 5 seeds, Markov 2k–100k × 5 seeds | `run_expB_parallel.sh` / `submit_expB_ext.sh` |
+| **C** | R1-4 | 约束消融（KNET_rc vs KNET_uncons_rc）| ✅ **Done** (2026-04-24): 小样本差距显著（KNET_rc n=10k→0.991 vs KNET_uncons→0.539）| `run_expC.sh` / `run_expC_ablation.sh` |
 | **D（new）** | — | Simu16 学习曲线对比（KNET_rc vs CNN-TF，两台机器）| ✅ **Done** (2026-04-24) | `run_expD_192.sh` + cluster |
 | **E** | R1-2 | 缩小论断范围（"omics pattern recognition"）| ⏳ Pending（文字修改）| — |
 | **F** | R1-6 | 语言润色（口语表达）| ⏳ Pending（文字修改）| — |
@@ -20,7 +20,7 @@
 
 ---
 
-## Exp A：超参数扫描（🔄 Seed 0 完成；Seeds 1&2 运行中，2026-04-24）
+## Exp A：超参数扫描（✅ 完成，3 seeds，2026-04-24）
 
 **目标**：验证 KNET 对 kernel_size 和 num_kernels 的不敏感性。
 
@@ -29,13 +29,7 @@
 | kernel_size | 6, 8, 10, 12, 15 |
 | num_kernels | 16, 32, 64, 128 |
 | 数据集 | abs-ran_fix2（RC任务）+ markov_1_0_50000（Markov任务）|
-| 总运行数 | 40 runs × 3 seeds = 120 runs（seed 0 完成，seeds 1&2 运行中，`run_expA_seeds12.sh`）|
-
-**Seeds 1&2 监控**：
-```bash
-ssh liut@192.168.3.17 "tail -f /tmp/expA_seeds12.log"
-ssh liut@192.168.3.17 "ps aux | grep run_bmk | grep -v grep | wc -l"
-```
+| 总运行数 | 40 runs × 3 seeds = 120 runs（全部完成）|
 
 **结果（k=12, nk=64 为论文默认值）：**
 
@@ -63,67 +57,70 @@ Markov (markov_1_0_50000, KNET)：
 
 ---
 
-## Exp B：学习曲线（🔄 扩展中，2026-04-24）
+## Exp B：学习曲线（✅ 完成，5 seeds，2026-04-24）
 
-**目标（扩展后）**：6 模型 × 7 RC数据量 + 6 Markov数据量 × 5 seeds（RC: 1k/2k/5k/10k/20k/50k/100k；Markov: 2k/5k/10k/20k/50k/100k）。
+**目标（最终）**：6 模型 × 7 RC数据量 + 6 Markov数据量 × 5 seeds（RC: 1k/2k/5k/10k/20k/50k/100k；Markov: 2k/5k/10k/20k/50k/100k）。全部完成，607 runs in exp_results_merged.csv。
 
-**扩展内容（210 新runs，luminary gpu2+gpu32）**：
-- RC 新增 n=1k, 2k（seeds 0-4，6模型）
-- RC 已有 n=5k-100k 补充 seeds 3,4
-- Markov 新增 n=2k（`markov_1_0_5000 --sample-size 2000`，seeds 0-4，6模型）
-- Markov 已有 n=5k-100k 补充 seeds 3,4
+**RC 任务（abs-ran_fix2，Simu7），5-seed mean AUROC：**
 
-**提交方式**（在 luminary 激活 kattn-sim 后执行）：
-```bash
-cd /lustre/grp/gglab/liut/K-attention/K-attention/Kattn-sim-dev/src/simulation
-bash submit_expB_ext.sh
-```
+| 模型 | n=1k | n=2k | n=5k | n=10k | n=20k | n=50k | n=100k |
+|------|------|------|------|-------|-------|-------|--------|
+| KNET_rc | 0.656 | 0.730 | 0.916* | **0.999** | **0.999** | **0.999** | **0.999** |
+| cnn_transformer_pm | 0.631 | 0.846 | 0.942 | 0.976 | 0.985 | 0.987 | 0.991 |
+| transformer_cls | 0.800 | 0.825 | 0.819 | 0.829 | 0.988 | 0.993 | 0.993 |
+| cnn | 0.715 | 0.799 | 0.852 | 0.898 | 0.887 | 0.893 | 0.909 |
+| transformer_cls_kmer | 0.595 | 0.517 | 0.602 | 0.621 | 0.690 | 0.782 | 0.965 |
+| mha | 0.639 | 0.714 | 0.718 | 0.743 | 0.743 | 0.765 | 0.795 |
 
-**RC 任务（abs-ran_fix2，Simu7），mean AUROC：**
+*KNET_rc n=5k: seed=1 异常值 0.595（未收敛），其余 4 seeds ~0.995；报告时使用 median 或注明。
 
-| 模型 | n=5k | n=10k | n=20k | n=50k | n=100k |
-|------|------|-------|-------|-------|--------|
-| KNET_rc | **0.995** | **0.997** | **0.998** | **0.999** | **0.999** |
-| cnn_transformer_pm | 0.950 | 0.983 | 0.982 | 0.989 | 0.991 |
-| transformer_cls | 0.818 | 0.828 | 0.988 | 0.994 | 0.993 |
-| cnn | 0.850 | 0.895 | 0.886 | 0.893 | 0.909 |
-| transformer_cls_kmer | 0.578 | 0.618 | 0.689 | 0.777 | 0.965 |
-| mha | 0.741 | 0.739 | 0.747 | 0.762 | 0.791 |
+**Markov 任务，5-seed mean AUROC：**
 
-**Markov 任务，mean AUROC：**
-
-| 模型 | n=5k | n=10k | n=20k | n=50k | n=100k |
-|------|------|-------|-------|-------|--------|
-| KNET | **0.836** | **0.887** | **0.835** | **0.867** | **0.877** |
-| cnn_transformer_pm | 0.729 | 0.831 | 0.780 | 0.836 | 0.849 |
-| transformer_cls | 0.568 | 0.545 | 0.624 | 0.829 | 0.824 |
-| cnn | 0.643 | 0.769 | 0.790 | 0.854 | 0.867 |
-| transformer_cls_kmer | 0.691 | 0.800 | 0.775 | 0.812 | 0.826 |
-| mha | 0.550 | 0.532 | 0.529 | 0.610 | 0.634 |
-
-**注**：KNET_rc n=5000 seed=1 存在异常值（0.595，未收敛），不影响整体趋势；取 3 seeds 时需报告 median 或注明。
+| 模型 | n=2k | n=5k | n=10k | n=20k | n=50k | n=100k |
+|------|------|------|-------|-------|-------|--------|
+| KNET | 0.677 | 0.822 | **0.888** | **0.835** | 0.859 | 0.878 |
+| cnn_transformer_pm | 0.553 | 0.728 | 0.825 | 0.783 | 0.840 | 0.852 |
+| transformer_cls | 0.574 | 0.564 | 0.542 | 0.659 | 0.830 | 0.826 |
+| cnn | 0.548 | 0.640 | 0.780 | 0.789 | 0.854 | 0.868 |
+| transformer_cls_kmer | 0.538 | 0.707 | 0.809 | 0.772 | 0.813 | 0.826 |
+| mha | 0.590 | 0.549 | 0.537 | 0.535 | 0.609 | 0.625 |
 
 ---
 
-## Exp C：约束消融（✅ 完成，2026-04-23）
+## Exp C：约束消融（✅ 完成，2026-04-24 扩展版）
 
-**目标**：对比有/无 point-to-point 约束的性能差异（k=12, nk=64，全量数据）。
+**目标（修订版）**：对比有/无 point-to-point 约束在**小样本**下的性能差异（k=12, nk=64，数据集=random_rand 最难任务）。
 
-**RC 任务：**
+### 满载数据消融（原版 run_expC.sh）
 
-| 数据集 | KNET_rc (s0/s1/s2) | mean | KNET_uncons_rc (s0/s1/s2) | mean | KNET_rc - uncons |
-|--------|---------------------|------|---------------------------|------|-----------------|
-| abs-ran_fix2 (Simu7) | 0.9996/0.9995/0.9995 | **0.9995** | 0.9994/0.9989/0.9994 | 0.9992 | +0.0003 |
-| random_rand (Simu16) | 0.9943/0.9933/0.9941 | **0.9939** | 0.9946/0.9927/0.9940 | 0.9938 | +0.0001 |
+| 数据集 | KNET_rc mean | KNET_uncons_rc mean | Δ |
+|--------|-------------|---------------------|---|
+| abs-ran_fix2 (Simu7) | **0.9995** | 0.9992 | +0.0003 |
+| random_rand (Simu16) | **0.9939** | 0.9938 | +0.0001 |
 
-**Markov 任务（markov_1_0_50000）：**
+Markov (n=50k): KNET **0.8695** vs KNET_uncons 0.8605 (+0.009)
 
-| 模型 | s0 | s1 | s2 | mean | KNET - uncons |
-|------|----|----|----|----|---|
-| KNET | 0.8705 | 0.8713 | 0.8667 | **0.8695** | |
-| KNET_uncons | 0.8557 | 0.8613 | 0.8646 | 0.8605 | **+0.0090** |
+### 小样本消融（run_expC_ablation.sh，3 seeds，random_rand）
 
-**解读**：RC 任务满载数据下约束效果因天花板效应不显著；Markov 任务约束带来 +0.009 稳定提升。约束的主要价值体现在小样本效率（Exp D/B 对比可见）。
+**RC 任务（random_rand，Simu16，最难）：**
+
+| 模型 | n=2k | n=5k | n=10k | n=full |
+|------|------|------|-------|--------|
+| **KNET_rc (constrained, nk=64)** | 0.689 | 0.827 | **0.991** | **0.994** |
+| KNET_uncons_rc (nk=64, 12×params) | 0.562 | 0.521 | 0.539 | 0.994 |
+| KNET_uncons_rc (nk=5, param-matched) | 0.566 | 0.522 | 0.519 | — |
+
+**关键发现**：无约束模型在 n=2k–10k 完全无法学习（AUROC ~0.52，接近随机），而约束模型 n=10k 已达 0.991。两者仅在满载数据时收敛。nk=5 参数匹配版与 nk=64 无约束版表现相似，说明参数量不是关键，约束本身是核心。
+
+**Markov 任务（markov_1_0，3 seeds）：**
+
+| 模型 | n=2k | n=5k | n=10k |
+|------|------|------|-------|
+| **KNET (constrained, nk=64)** | 0.677 | 0.822 | **0.888** |
+| KNET_uncons (nk=64) | 0.638 | 0.779 | 0.847 |
+| KNET_uncons (nk=5) | 0.614 | 0.737 | 0.865 |
+
+约束带来一致 ~0.04 提升（小样本段）。
 
 ---
 

@@ -26,7 +26,7 @@ from kattn.transformers import (
 
 )
 from kattn.kattention import KNET_Crispr_test12, KNET_Crispr_test13, KNET_Crispr_test14, KNET_Crispr_test16, KNET_Crispr_test17, KNET_Crispr
-from kattn.cnns import CNNModel,CNNModel_1,CNNModel_6,CNNModel_9
+from kattn.cnns import CNNModel, CNNTransformerCrispr, CNNTransformerCrisprMatched
 from kattn.modules import CNNMixerConfig
 
 from kattn.tokenizers import RNATokenizer, RNAKmerTokenizer
@@ -223,6 +223,14 @@ class LightningTestModel(L.LightningModule):
                 attn_method="flash-attn",
             )
             self.model = TransformerCLSModel(transformer_config,regression=True)
+        elif model_type == "cnn_transformer":
+            self.model = CNNTransformerCrispr(
+                vocab_size=len(self.tokenizer),
+            )
+        elif model_type == "cnn_transformer_pm":
+            self.model = CNNTransformerCrisprMatched(
+                vocab_size=len(self.tokenizer),
+            )
         else:
             raise ValueError(f"model_type {model_type} not supported")
 
