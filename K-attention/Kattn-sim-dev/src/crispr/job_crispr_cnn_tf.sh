@@ -1,18 +1,13 @@
 #!/bin/bash
 #SBATCH --job-name=crispr_cnn_tf
-#SBATCH --output=/lustre/grp/gglab/liut/logs/crispr_cnn_tf_%j.log
-#SBATCH --error=/lustre/grp/gglab/liut/logs/crispr_cnn_tf_%j.err
+#SBATCH --output=/lustre/grp/gglab/liut/logs/crispr_cnn_tf_%A_%a.log
+#SBATCH --error=/lustre/grp/gglab/liut/logs/crispr_cnn_tf_%A_%a.err
 #SBATCH --gres=gpu:1
 #SBATCH --mem=16G
-#SBATCH --time=24:00:00
+#SBATCH --time=02:00:00
+# array index 由 submit_crispr_cnn_tf.sh 传入 --array=0-N
 
-# CRISPR CNN-Transformer baseline — 5-fold CV on luminary
-# 11 datasets × 2 models × 5 sets × version=0 = 110 runs
-# 单 GPU 节点串行执行（约 15-20 GPU-hours），已完成自动跳过
-
-# 代码路径（含 K-attention/K-attention 前缀）
 CODE_BASE=/lustre/grp/gglab/liut/K-attention/K-attention/Kattn-sim-dev
-# 数据/结果路径（无前缀，与已有 CRISPR 结果一致）
 DATA_BASE=/lustre/grp/gglab/liut/Kattn-sim-dev
 
 export KATTN_SRC_DIR=$CODE_BASE/src
@@ -24,75 +19,44 @@ export PYTHONPATH=$KATTN_SRC_DIR:$PYTHONPATH
 
 SCRIPT_DIR=$CODE_BASE/src/crispr
 RESULT_BASE=$DATA_BASE/results/Crispr
-
-mkdir -p /lustre/grp/gglab/liut/logs
+TASK_LIST=$SCRIPT_DIR/crispr_task_list.txt
 
 source /lustre/grp/gglab/liut/mambaforge/etc/profile.d/conda.sh
 conda activate kattn-sim
 
-cd "$SCRIPT_DIR"
+# 读取第 SLURM_ARRAY_TASK_ID 行（格式：dataset set model）
+LINE=$(sed -n "$((SLURM_ARRAY_TASK_ID + 1))p" "$TASK_LIST")
+if [ -z "$LINE" ]; then
+    echo "ERROR: empty task at index $SLURM_ARRAY_TASK_ID"
+    exit 1
+fi
 
-DATASETS=(
-    chari2015Train293T
-    doench2014-Hs
-    doench2014-Mm
-    doench2016_hg19
-    hart2016-Hct1162lib1Avg
-    hart2016-HelaLib1Avg
-    hart2016-HelaLib2Avg
-    hart2016-Rpe1Avg
-    morenoMateos2015
-    xu2015TrainHl60
-    xu2015TrainKbm7
-)
-
-MODELS=(cnn_transformer cnn_transformer_pm)
-SETS=(set0 set1 set2 set3 set4)
+DS=$(echo "$LINE" | awk '{print $1}')
+SET=$(echo "$LINE" | awk '{print $2}')
+MODEL=$(echo "$LINE" | awk '{print $3}')
 VERSION=0
 
-TOTAL=0
-SKIP=0
-FAIL=0
+echo "[$(date '+%H:%M:%S')] START $DS / $SET / $MODEL (array_id=$SLURM_ARRAY_TASK_ID)"
 
-log() { echo "[$(date '+%H:%M:%S')] $*"; }
+# 检查结果是否已存在
+RESULT=$RESULT_BASE/$DS/$MODEL/$SET/$VERSION/test_metrics.csv
+if [ -f "$RESULT" ]; then
+    echo "SKIP $DS/$SET/$MODEL — 已完成"
+    exit 0
+fi
 
-for DS in "${DATASETS[@]}"; do
-    DATA_DIR=$KATTN_RESOURCES_DIR/$DS
-    if [ ! -d "$DATA_DIR" ]; then
-        log "SKIP $DS — 数据目录不存在"
-        continue
-    fi
+# 检查 HuggingFace cache
+CACHE_DIR=$SCRIPT_DIR/_cache_dsts/$DS/$SET
+if [ ! -d "$CACHE_DIR" ]; then
+    echo "Cache $DS/$SET ..."
+    cd "$SCRIPT_DIR"
+    python run_Crispr_Regulation.py -m KNET_Crispr -c "$DS" -s $SET \
+        -v $VERSION --cache-run 2>&1 | tail -3
+fi
 
-    for SET in "${SETS[@]}"; do
-        # 检查 HuggingFace cache（其他模型已跑过，应已存在）
-        CACHE_DIR=$SCRIPT_DIR/_cache_dsts/$DS/$SET
-        if [ ! -d "$CACHE_DIR" ]; then
-            log "Cache $DS/$SET ..."
-            python run_Crispr_Regulation.py -m KNET_Crispr -c "$DS" -s $SET \
-                -v $VERSION --cache-run 2>&1 | tail -3
-        fi
+cd "$SCRIPT_DIR"
+python run_Crispr_Regulation.py \
+    -m "$MODEL" -c "$DS" -s $SET \
+    -v $VERSION --max-epochs 200 --patience 20 --max-lr 1e-3
 
-        for MODEL in "${MODELS[@]}"; do
-            TOTAL=$((TOTAL + 1))
-            RESULT=$RESULT_BASE/$DS/$MODEL/$SET/$VERSION/test_metrics.csv
-            if [ -f "$RESULT" ]; then
-                log "SKIP $DS/$SET/$MODEL — 已完成"
-                SKIP=$((SKIP + 1))
-                continue
-            fi
-
-            log "RUN  $DS / $SET / $MODEL ..."
-            if python run_Crispr_Regulation.py \
-                -m "$MODEL" -c "$DS" -s $SET \
-                -v $VERSION --max-epochs 200 --patience 20 --max-lr 1e-3 \
-                2>&1 | tail -5; then
-                log "DONE $DS/$SET/$MODEL"
-            else
-                log "FAIL $DS/$SET/$MODEL"
-                FAIL=$((FAIL + 1))
-            fi
-        done
-    done
-done
-
-log "=== 完成 === total=$TOTAL skip=$SKIP fail=$FAIL done=$((TOTAL - SKIP - FAIL))"
+echo "[$(date '+%H:%M:%S')] DONE $DS/$SET/$MODEL exit=$?"
