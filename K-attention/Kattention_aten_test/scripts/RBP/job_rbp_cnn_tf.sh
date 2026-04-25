@@ -47,7 +47,8 @@ mkdir -p "$RESULT_ROOT/$RBP/$MODEL"
 echo "[$(date '+%H:%M:%S')] START $RBP (array_id=$SLURM_ARRAY_TASK_ID)"
 
 cd "$SCRIPT_DIR"
-conda activate pytorch
+source /lustre/grp/gglab/liut/mambaforge/etc/profile.d/conda.sh
+conda activate kattn-sim
 
 python -u main.py \
     "$RBP_DIR" \
