@@ -10,16 +10,22 @@
 # 11 datasets × 2 models × 5 sets × version=0 = 110 runs
 # 单 GPU 节点串行执行（约 15-20 GPU-hours），已完成自动跳过
 
-BASE=/lustre/grp/gglab/liut/Kattn-sim-dev
-export KATTN_SRC_DIR=$BASE/src
-export KATTN_RESOURCES_DIR=$BASE/resources
-export HF_DATASETS_CACHE=$BASE/.hf_cache
+# 代码路径（含 K-attention/K-attention 前缀）
+CODE_BASE=/lustre/grp/gglab/liut/K-attention/K-attention/Kattn-sim-dev
+# 数据/结果路径（无前缀，与已有 CRISPR 结果一致）
+DATA_BASE=/lustre/grp/gglab/liut/Kattn-sim-dev
+
+export KATTN_SRC_DIR=$CODE_BASE/src
+export KATTN_RESOURCES_DIR=$DATA_BASE/resources
+export HF_DATASETS_CACHE=$DATA_BASE/.hf_cache
 export HF_HOME=$HF_DATASETS_CACHE
 export HF_DATASETS_OFFLINE=1
 export PYTHONPATH=$KATTN_SRC_DIR:$PYTHONPATH
 
-SCRIPT_DIR=$BASE/src/crispr
-RESULT_BASE=$BASE/results/Crispr
+SCRIPT_DIR=$CODE_BASE/src/crispr
+RESULT_BASE=$DATA_BASE/results/Crispr
+
+mkdir -p /lustre/grp/gglab/liut/logs
 
 source /lustre/grp/gglab/liut/mambaforge/etc/profile.d/conda.sh
 conda activate kattn-sim
