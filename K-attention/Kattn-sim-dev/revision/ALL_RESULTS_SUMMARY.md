@@ -97,15 +97,35 @@ Also includes parameter-matched variant (nk=5, same parameter count as KNET_rc).
 
 **Markov task:**
 
-| Model | n=2k | n=5k | n=10k |
-|-------|------|------|-------|
-| KNET (constrained, nk=64) | 0.677 | 0.822 | **0.888** |
-| KNET_uncons (nk=64) | 0.638 | 0.779 | 0.847 |
-| KNET_uncons (nk=5) | 0.614 | 0.737 | 0.865 |
+The Markov ablation uses a 2-condition design: the truly unconstrained baseline removes
+BOTH the point-to-point (groups) constraint AND the ±2 band mask, because the band mask
+itself encodes locality prior and partially subsumes the groups constraint. Removing only
+groups while keeping the mask (KNET_uncons) is an intermediate condition, not a true
+"no constraint" baseline.
+
+| Model | groups | mask | n=2k | n=5k | n=10k |
+|-------|:------:|:----:|------|------|-------|
+| KNET (full constraints) | ✅ | ✅ | **0.677** | **0.822** | **0.888** |
+| KNET_uncons (groups only removed) | ❌ | ✅ | 0.638 | 0.779 | 0.847 |
+| KNET_uncons_nomask (truly unconstrained) | ❌ | ❌ | 0.574 | 0.716 | 0.835 |
+
+**Constraint contribution breakdown (KNET vs truly unconstrained):**
+
+| Data size | Total Δ | groups alone | mask alone |
+|-----------|:-------:|:------------:|:----------:|
+| n=2k | **+0.103** | +0.039 | +0.064 |
+| n=5k | **+0.106** | +0.043 | +0.063 |
+| n=10k | +0.053 | +0.041 | +0.012 |
 
 **Key finding**: At n=10k, constrained model achieves AUROC=0.991 vs unconstrained=0.539
-(Δ=0.452). Parameter-matched unconstrained variant (nk=5) shows identical failure
-(0.519), ruling out parameter count as the explanation. The constraint is essential.
+(Δ=0.452) on the RC task. Parameter-matched unconstrained variant (nk=5) shows identical
+failure (0.519), ruling out parameter count as the explanation.
+
+For the Markov task, the full constraint effect (groups+mask vs neither) is Δ=0.053–0.106
+across data sizes. The mask contributes more than groups at small n (n=2k: mask Δ=+0.064
+vs groups Δ=+0.039), reflecting that locality prior is critical for sample efficiency.
+At n=10k the mask effect diminishes (Δ=+0.012) while groups remains stable (Δ=+0.041),
+consistent with the model learning Markov structure from larger data even without the mask.
 
 ---
 

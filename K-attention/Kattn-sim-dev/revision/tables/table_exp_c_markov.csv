@@ -1,0 +1,4 @@
+model,groups,mask,n=2000,n=5000,n=10000
+KNET (full constraints),yes,yes,0.677,0.822,0.888
+KNET_uncons (groups removed),no,yes,0.638,0.779,0.847
+KNET_uncons_nomask (truly unconstrained),no,no,0.574,0.716,0.835

@@ -1,0 +1,4 @@
+model,n=2000,n=5000,n=10000,n=full
+KNET_rc (constrained nk=64),0.689,0.827,0.991,0.994
+KNET_uncons_rc (nk=64),0.562,0.521,0.539,0.994
+KNET_uncons_rc (nk=5 param-matched),0.566,0.522,0.519,

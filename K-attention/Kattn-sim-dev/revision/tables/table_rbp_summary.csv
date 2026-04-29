@@ -1,0 +1,6 @@
+metric,KNET,CNN-TF
+Mean AUROC (N=172),0.871,0.822
+Wins,170/172,2/172
+Mean delta,+0.049,
+t_statistic,26.70,
+p_value,6.77e-63,

@@ -1,0 +1,6 @@
+comparison,N,KNET_wins,p_value
+Exp B RC n=10k (simulation),5 seeds,—,0.014
+Exp B Markov pooled (simulation),5 seeds,—,<0.001 (most sizes)
+RBP task (real data),172 RBPs,170/172,6.77e-63
+CRISPR vs CNN-TF (real data),11 datasets,11/11,7.3e-6
+CRISPR vs CNN-TF-pm (real data),11 datasets,11/11,5.1e-6

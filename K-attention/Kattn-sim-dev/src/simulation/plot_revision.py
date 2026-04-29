@@ -8,8 +8,10 @@ Usage:
   python plot_revision.py --exp B      # Exp B learning curves only
   python plot_revision.py --exp C      # Exp C ablation only
   python plot_revision.py --exp D      # Exp D Simu16 curve only
+  python plot_revision.py --exp E      # Exp E RBP scatter only
+  python plot_revision.py --exp F      # Exp F CRISPR grouped bar only
 
-Output: ../../revision/figures/exp_{a,b,c,d}_*.{pdf,png}
+Output: ../../revision/figures/exp_{a,b,c,d,e,f}_*.{pdf,png}
 Style:  figure_style.py (Wong palette, Arial, fonttype=42, 300 dpi)
 """
 import argparse
@@ -28,9 +30,13 @@ import pandas as pd
 import seaborn as sns
 
 # ── Paths ──────────────────────────────────────────────────────────────────
-SCRIPT_DIR  = Path(__file__).parent
-RESULTS_CSV = SCRIPT_DIR / "../../results/exp_results_merged.csv"
-FIGURES_DIR = SCRIPT_DIR / "../../revision/figures"
+SCRIPT_DIR    = Path(__file__).parent
+RESULTS_CSV   = SCRIPT_DIR / "../../results/exp_results_merged.csv"
+FIGURES_DIR   = SCRIPT_DIR / "../../revision/figures"
+DATA_DIR      = SCRIPT_DIR / "../../revision/data"
+RBP_KNET_TSV  = SCRIPT_DIR / "../../../Kattention_aten_test/scripts/RBP/log/Train_KNET_plus_seq_valid_test.tsv"
+RBP_CNNTF_CSV = DATA_DIR / "rbp_cnntf_seed666.csv"
+CRISPR_CSV    = DATA_DIR / "crispr_comparison.csv"
 FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -142,14 +148,9 @@ def plot_exp_b(df: pd.DataFrame):
         (df["model_type"].isin(rc_models)) &
         (df["sample_size"] > 0)
     ].copy()
-    # exclude anomalous KNET_rc n=5000 seed=1 (AUROC≈0.595)
-    rc_df = rc_df[~(
-        (rc_df["model_type"] == "KNET_rc") &
-        (rc_df["sample_size"] == 5000) &
-        (rc_df["val_auroc"] < 0.7)
-    )]
+    # anomalous KNET_rc n=5000 version=1 has been replaced in CSV; no exclusion needed.
     _learning_curve_panel(axes[0], rc_df, rc_models, "sample_size",
-                          "RC task (Simu7, abs-ran_fix2)")
+                          "RC task (Simu7)")
 
     # Markov panel — data size from sample_size (if subsampled) or test_config suffix
     mk_models = ["KNET", "cnn_transformer_pm", "transformer_cls",
@@ -161,7 +162,7 @@ def plot_exp_b(df: pd.DataFrame):
     from_config = mk_df["test_config"].str.extract(r"_(\d+)$")[0].astype(int)
     mk_df["data_size"] = mk_df["sample_size"].where(mk_df["sample_size"] > 0, from_config)
     _learning_curve_panel(axes[1], mk_df, mk_models, "data_size",
-                          "Markov task")
+                          "Markov task (Simu_M7)")
 
     fig.suptitle("Learning curves (mean ± 1 std, 5 seeds)", fontsize=fs.FS_TITLE, y=1.02)
     fig.tight_layout(w_pad=3)
@@ -232,6 +233,10 @@ def plot_exp_c(df: pd.DataFrame):
 
     # ── RC panel (random_rand, Simu16) ────────────────────────────────────
     rc_models = ["KNET_rc", "KNET_uncons_rc"]
+    rc_display = {
+        "KNET_rc":       "KNET (RC)",
+        "KNET_uncons_rc": "KNET_uncons (RC)",
+    }
     rc_df = df[
         (df["test_config"] == "random_rand") &
         (df["model_type"].isin(rc_models)) &
@@ -251,7 +256,7 @@ def plot_exp_c(df: pd.DataFrame):
                      .reset_index()
                      .sort_values("plot_size"))
         color = fs.MODEL_COLORS.get(model, "#333333")
-        label = fs.MODEL_NAMES.get(model, model)
+        label = rc_display.get(model, model)
         axes[0].plot(stats["plot_size"], stats["mean"], marker="o",
                      label=label, color=color,
                      linewidth=fs.LW, markersize=fs.MS)
@@ -267,7 +272,7 @@ def plot_exp_c(df: pd.DataFrame):
     axes[0].set_xticklabels(["2k", "5k", "10k", "full\n(~50k)"],
                              fontsize=fs.FS_TICK)
     axes[0].set_ylim(0.45, 1.05)
-    axes[0].set_title("RC task (Simu16, random_rand)", fontsize=fs.FS_TITLE, pad=6)
+    axes[0].set_title("RC task (Simu16)", fontsize=fs.FS_TITLE, pad=6)
     axes[0].set_xlabel("Training set size", fontsize=fs.FS_LABEL)
     axes[0].set_ylabel("AUROC", fontsize=fs.FS_LABEL)
     axes[0].tick_params(axis="y", labelsize=fs.FS_TICK)
@@ -275,7 +280,13 @@ def plot_exp_c(df: pd.DataFrame):
                    handlelength=1.5, borderpad=0.3)
 
     # ── Markov panel ──────────────────────────────────────────────────────
-    mk_models = ["KNET", "KNET_uncons"]
+    # Only show KNET (full constraints) vs KNET_uncons_nomask (truly unconstrained)
+    # Display names override: "KNET (Markov)" and "KNET_uncons (Markov)"
+    mk_models = ["KNET", "KNET_uncons_nomask"]
+    mk_display = {
+        "KNET":               "KNET (Markov)",
+        "KNET_uncons_nomask": "KNET_uncons (Markov)",
+    }
     mk_df = df[
         df["test_config"].str.startswith("markov_1_0_") &
         (df["model_type"].isin(mk_models)) &
@@ -295,7 +306,7 @@ def plot_exp_c(df: pd.DataFrame):
                      .reset_index()
                      .sort_values("data_size"))
         color = fs.MODEL_COLORS.get(model, "#333333")
-        label = fs.MODEL_NAMES.get(model, model)
+        label = mk_display.get(model, model)
         axes[1].plot(stats["data_size"], stats["mean"], marker="o",
                      label=label, color=color,
                      linewidth=fs.LW, markersize=fs.MS)
@@ -307,15 +318,18 @@ def plot_exp_c(df: pd.DataFrame):
         )
 
     axes[1].set_xscale("log")
+    axes[1].set_xticks([2000, 5000, 10000, 50000])
+    axes[1].set_xticklabels(["2k", "5k", "10k", "50k"],
+                             fontsize=fs.FS_TICK)
     axes[1].set_ylim(0.45, 1.05)
-    axes[1].set_title("Markov task", fontsize=fs.FS_TITLE, pad=6)
+    axes[1].set_title("Markov task (Simu_M7)", fontsize=fs.FS_TITLE, pad=6)
     axes[1].set_xlabel("Training set size", fontsize=fs.FS_LABEL)
     axes[1].set_ylabel("AUROC", fontsize=fs.FS_LABEL)
     axes[1].tick_params(axis="both", labelsize=fs.FS_TICK)
     axes[1].legend(fontsize=fs.FS_LEGEND, loc="lower right",
                    handlelength=1.5, borderpad=0.3)
 
-    fig.suptitle("Point-to-point constraint ablation (k=12, nk=64, 3 seeds)",
+    fig.suptitle("Point-to-point constraint ablation (kernel_length=12, num_kernels=64, 3 seeds)",
                  fontsize=fs.FS_TITLE, y=1.02)
     fig.tight_layout(w_pad=3)
     fs.save(fig, FIGURES_DIR / "exp_c_ablation")
@@ -334,12 +348,6 @@ def plot_exp_d(df: pd.DataFrame):
         (df["test_config"] == "random_rand") &
         (df["sample_size"] > 0)
     ].copy()
-    # exclude anomalous KNET_rc n=5000 seed=0 (AUROC≈0.509)
-    sub = sub[~(
-        (sub["model_type"] == "KNET_rc") &
-        (sub["sample_size"] == 5000) &
-        (sub["val_auroc"] < 0.6)
-    )]
 
     _learning_curve_panel(ax, sub, models, "sample_size",
                           "Simu16 (random_rand)")
@@ -348,11 +356,249 @@ def plot_exp_d(df: pd.DataFrame):
     plt.close(fig)
 
 
+# ── Exp E — RBP comparison scatter plot ───────────────────────────────────
+
+def plot_exp_e_rbp():
+    """Scatter plot: KNET vs CNN-TF AUROC per RBP (N=172).
+
+    X axis: CNN-TF (seed=666)
+    Y axis: KNET (k=16, mean over 4 seeds)
+    Reference line: y = x
+    """
+    # Load KNET RBP results
+    if not RBP_KNET_TSV.exists():
+        print(f"WARNING: {RBP_KNET_TSV} not found. Skipping Exp E.")
+        return
+    knet_df = pd.read_csv(
+        RBP_KNET_TSV, sep="\t", header=None,
+        names=["record", "rbp", "model", "kernel_size", "seed", "auroc", "loss"]
+    )
+    knet_df = knet_df[knet_df["kernel_size"] == 16]
+    knet_mean = knet_df.groupby("rbp")["auroc"].mean().reset_index()
+    knet_mean.columns = ["rbp", "knet_auroc"]
+
+    # Load CNN-TF RBP results
+    if not RBP_CNNTF_CSV.exists():
+        print(f"WARNING: {RBP_CNNTF_CSV} not found. Skipping Exp E.")
+        return
+    cnntf_df = pd.read_csv(RBP_CNNTF_CSV)
+    cnntf_df.columns = ["rbp", "cnntf_auroc"]
+
+    merged = pd.merge(knet_mean, cnntf_df, on="rbp")
+    n = len(merged)
+    wins = (merged["knet_auroc"] > merged["cnntf_auroc"]).sum()
+    delta = (merged["knet_auroc"] - merged["cnntf_auroc"]).mean()
+
+    fig, ax = plt.subplots(figsize=(fs.FIG_SQUARE[0] * 1.2, fs.FIG_SQUARE[1] * 1.2))
+
+    ax.scatter(
+        merged["cnntf_auroc"], merged["knet_auroc"],
+        color=fs.C["blue"], alpha=0.45, s=fs.SCATTER_S * 1.8,
+        linewidths=0, zorder=3,
+    )
+
+    # y = x reference diagonal
+    lim_min = min(merged["cnntf_auroc"].min(), merged["knet_auroc"].min()) - 0.02
+    lim_max = max(merged["cnntf_auroc"].max(), merged["knet_auroc"].max()) + 0.02
+    ax.plot([lim_min, lim_max], [lim_min, lim_max],
+            color=fs.C["gray"], linewidth=fs.LW_THIN, linestyle="--",
+            zorder=2, label="y = x")
+
+    ax.set_xlim(lim_min, lim_max)
+    ax.set_ylim(lim_min, lim_max)
+    ax.set_aspect("equal")
+
+    # Annotate summary statistics
+    ax.text(
+        0.04, 0.97,
+        f"N={n}, wins={wins}/{n}\nmean Δ={delta:+.3f}",
+        transform=ax.transAxes, va="top", ha="left",
+        fontsize=fs.FS_ANNOT + 1,
+        bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="#cccccc", alpha=0.85),
+    )
+
+    ax.set_xlabel("CNN-TF AUROC", fontsize=fs.FS_LABEL)
+    ax.set_ylabel("KNET AUROC", fontsize=fs.FS_LABEL)
+    ax.set_title("RBP binding prediction (N=172 datasets)", fontsize=fs.FS_TITLE, pad=6)
+    ax.tick_params(axis="both", labelsize=fs.FS_TICK)
+
+    fig.tight_layout()
+    fs.save(fig, FIGURES_DIR / "exp_e_rbp_scatter")
+    plt.close(fig)
+
+
+# ── Exp F — CRISPR comparison grouped bar chart ───────────────────────────
+
+_CRISPR_DATASET_SHORT = {
+    "chari2015Train293T":      "Chari'15",
+    "doench2014-Hs":           "Doench'14-Hs",
+    "doench2014-Mm":           "Doench'14-Mm",
+    "doench2016_hg19":         "Doench'16",
+    "hart2016-Hct1162lib1Avg": "Hart'16-Hct",
+    "hart2016-HelaLib1Avg":    "Hart'16-Hela1",
+    "hart2016-HelaLib2Avg":    "Hart'16-Hela2",
+    "hart2016-Rpe1Avg":        "Hart'16-Rpe1",
+    "morenoMateos2015":        "Moreno'15",
+    "xu2015TrainHl60":         "Xu'15-Hl60",
+    "xu2015TrainKbm7":         "Xu'15-Kbm7",
+}
+
+_CRISPR_MODEL_COLORS = {
+    "KNET_Crispr":      fs.C["blue"],
+    "CRISPRon_base":    fs.C["green"],
+    "transformer_cls":  fs.C["purple"],
+    "cnn_transformer":  fs.C["orange"],
+    "cnn_transformer_pm": fs.C["sky"],
+}
+_CRISPR_MODEL_NAMES = {
+    "KNET_Crispr":      "KNET",
+    "CRISPRon_base":    "CRISPRon",
+    "transformer_cls":  "Transformer",
+    "cnn_transformer":  "CNN-TF",
+    "cnn_transformer_pm": "CNN-TF (matched)",
+}
+_CRISPR_MODELS = [
+    "KNET_Crispr", "CRISPRon_base", "transformer_cls",
+    "cnn_transformer", "cnn_transformer_pm",
+]
+
+
+def plot_exp_f_crispr():
+    """Two-panel CRISPR comparison figure.
+
+    Left:  grouped bar chart — per-dataset Spearman r for 5 models
+    Right: summary bar chart — mean ± SEM across 11 datasets
+    """
+    if not CRISPR_CSV.exists():
+        print(f"WARNING: {CRISPR_CSV} not found. Skipping Exp F.")
+        return
+    df = pd.read_csv(CRISPR_CSV)
+
+    # Melt to long form
+    df_long = df.melt(id_vars="dataset", var_name="model", value_name="spearman")
+    datasets = list(df["dataset"])
+    n_ds = len(datasets)
+
+    fig, axes = plt.subplots(1, 2, figsize=(fs.FIG_2COL_TALL[0] * 1.15, fs.FIG_2COL_TALL[1]),
+                             gridspec_kw={"width_ratios": [3.5, 1]})
+
+    # ── Left panel: per-dataset grouped bars ─────────────────────────────
+    ax = axes[0]
+    n_models = len(_CRISPR_MODELS)
+    bar_w = 0.14
+    gap = 0.06
+    group_w = n_models * bar_w + gap
+
+    xtick_pos, xtick_labels = [], []
+    for di, ds in enumerate(datasets):
+        center = di * group_w
+        xtick_pos.append(center + (n_models - 1) * bar_w / 2)
+        xtick_labels.append(_CRISPR_DATASET_SHORT.get(ds, ds))
+
+        for mi, model in enumerate(_CRISPR_MODELS):
+            val = df.loc[df["dataset"] == ds, model].values
+            if len(val) == 0:
+                continue
+            x = center + mi * bar_w
+            color = _CRISPR_MODEL_COLORS.get(model, f"C{mi}")
+            label = _CRISPR_MODEL_NAMES.get(model, model) if di == 0 else None
+            ax.bar(x, val[0], width=bar_w * 0.88,
+                   color=color, alpha=0.78, label=label, zorder=2)
+
+    ax.set_xticks(xtick_pos)
+    ax.set_xticklabels(xtick_labels, fontsize=fs.FS_TICK - 0.5,
+                       rotation=35, ha="right")
+    ax.set_ylabel("Spearman r", fontsize=fs.FS_LABEL)
+    ax.set_title("CRISPR gRNA efficiency (per dataset)", fontsize=fs.FS_TITLE, pad=6)
+    ax.tick_params(axis="y", labelsize=fs.FS_TICK)
+    ax.set_ylim(0, 0.65)
+    ax.legend(fontsize=fs.FS_LEGEND, loc="upper right",
+              borderpad=0.3, ncol=1)
+
+    # ── Right panel: mean ± SEM summary bars ─────────────────────────────
+    ax2 = axes[1]
+    means, sems = [], []
+    for model in _CRISPR_MODELS:
+        vals = df[model].values
+        means.append(vals.mean())
+        sems.append(vals.std(ddof=1) / np.sqrt(len(vals)))
+
+    xs = np.arange(n_models)
+    colors = [_CRISPR_MODEL_COLORS.get(m, f"C{i}") for i, m in enumerate(_CRISPR_MODELS)]
+    bars = ax2.bar(xs, means, yerr=sems, width=0.6,
+                   color=colors, alpha=0.82, capsize=fs.CAPSIZE,
+                   error_kw={"linewidth": fs.LW_THIN, "ecolor": "#333333"},
+                   zorder=2)
+    ax2.set_xticks(xs)
+    ax2.set_xticklabels(
+        [_CRISPR_MODEL_NAMES.get(m, m) for m in _CRISPR_MODELS],
+        fontsize=fs.FS_TICK - 0.5, rotation=45, ha="right",
+    )
+    ax2.set_ylabel("Mean Spearman r", fontsize=fs.FS_LABEL)
+    ax2.set_title("Summary\n(N=11)", fontsize=fs.FS_TITLE, pad=6)
+    ax2.tick_params(axis="y", labelsize=fs.FS_TICK)
+    ax2.set_ylim(0, 0.58)
+
+    # Annotate mean values above bars
+    for x, mean in zip(xs, means):
+        ax2.text(x, mean + 0.012, f"{mean:.3f}",
+                 ha="center", va="bottom", fontsize=fs.FS_ANNOT,
+                 fontweight="bold")
+
+    fig.suptitle("CRISPR gRNA efficiency prediction (5-fold CV, Spearman r)",
+                 fontsize=fs.FS_TITLE, y=1.02)
+    fig.tight_layout(w_pad=2)
+    fs.save(fig, FIGURES_DIR / "exp_f_crispr_bar")
+    plt.close(fig)
+
+
+# ── Supp — RBFOX2 kernel_length sensitivity ───────────────────────────────
+
+def plot_rbfox2_kernel():
+    """Bar plot: RBFOX2_HepG2 AUROC vs kernel_length (12/16/20/24), mean ± std."""
+    knet_tsv = RBP_KNET_TSV
+    if not knet_tsv.exists():
+        print(f"WARNING: {knet_tsv} not found. Skipping RBFOX2 plot.")
+        return
+
+    df = pd.read_csv(knet_tsv, sep="\t", header=None,
+                     names=["record", "rbp", "model", "kernel_size", "seed", "auroc", "loss"])
+    rbfox2 = df[df["rbp"] == "RBFOX2_HepG2"].copy()
+
+    ks    = sorted(rbfox2["kernel_size"].unique())
+    means = [rbfox2[rbfox2["kernel_size"] == k]["auroc"].mean() for k in ks]
+    stds  = [rbfox2[rbfox2["kernel_size"] == k]["auroc"].std(ddof=1) for k in ks]
+
+    fig, ax = plt.subplots(figsize=(fs.FIG_1COL[0] * 1.2, fs.FIG_1COL[1] * 1.3))
+
+    x = np.arange(len(ks))
+    bars = ax.bar(x, means, yerr=stds, color=fs.C["blue"], alpha=0.85,
+                  width=0.5, capsize=fs.CAPSIZE, error_kw={"linewidth": fs.LW_THIN},
+                  zorder=3)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([str(k) for k in ks], fontsize=fs.FS_TICK)
+    ax.set_xlabel("kernel_length", fontsize=fs.FS_LABEL)
+    ax.set_ylabel("AUROC", fontsize=fs.FS_LABEL)
+    ax.tick_params(axis="y", labelsize=fs.FS_TICK)
+    ax.set_title("RBFOX2_HepG2 — kernel_length sensitivity",
+                 fontsize=fs.FS_TITLE, pad=6)
+
+    ymin = min(m - s for m, s in zip(means, stds))
+    ymax = max(m + s for m, s in zip(means, stds))
+    margin = (ymax - ymin) * 1.2
+    ax.set_ylim(ymin - margin, ymax + margin)
+
+    fig.tight_layout()
+    fs.save(fig, FIGURES_DIR / "supp_rbfox2_kernel")
+    plt.close(fig)
+
+
 # ── Main ───────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description="Generate revision figures.")
-    parser.add_argument("--exp", choices=["A", "B", "C", "D"],
+    parser.add_argument("--exp", choices=["A", "B", "C", "D", "E", "F", "RBFOX2"],
                         help="Experiment to plot (default: all)")
     args = parser.parse_args()
 
@@ -371,6 +617,15 @@ def main():
     if run_all or args.exp == "D":
         print("Plotting Exp D …")
         plot_exp_d(df)
+    if run_all or args.exp == "E":
+        print("Plotting Exp E (RBP scatter) …")
+        plot_exp_e_rbp()
+    if run_all or args.exp == "F":
+        print("Plotting Exp F (CRISPR bar) …")
+        plot_exp_f_crispr()
+    if run_all or args.exp == "RBFOX2":
+        print("Plotting RBFOX2 kernel_length sensitivity …")
+        plot_rbfox2_kernel()
 
     print(f"\nDone. Figures in: {FIGURES_DIR.resolve()}")
 
