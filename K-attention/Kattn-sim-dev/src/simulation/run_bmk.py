@@ -178,6 +178,27 @@ class LightningTestModel(L.LightningModule):
                 kernel_size=kernel_size,
                 num_kernels=num_kernels,
             )
+        elif model_type == "KNET_nomask":
+            # Markov ablation: P2P constrained (groups), no band mask, no reverse
+            # Isolates the contribution of band mask alone (vs KNET which has both)
+            self.model = KattentionModel(
+                embedding_method="onehot",
+                kattn_version="v4",          # no reverse
+                vocab_size=len(self.tokenizer),
+                kernel_size=kernel_size,
+                num_kernels=num_kernels,
+            )
+        elif model_type == "KNET_uncons_nomask":
+            # Markov ablation: truly unconstrained — no groups, no band mask, no reverse
+            # Proper "unconstrained" baseline for Markov: removes both the point-to-point
+            # constraint (groups) AND the band mask, so neither inductive bias is present.
+            self.model = KattentionModel_uncons(
+                embedding_method="onehot",
+                kattn_version="v4",          # no reverse
+                vocab_size=len(self.tokenizer),
+                kernel_size=kernel_size,
+                num_kernels=num_kernels,
+            )
         elif model_type == "cnn_transformer":
             self.model = CNNTransformerModel(
                 vocab_size=len(self.tokenizer),

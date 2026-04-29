@@ -1,0 +1,5 @@
+comparison,N,delta,t_stat,p_value,wins
+KNET vs CNN-TF,11,0.202,8.45,7.3e-6,11/11
+KNET vs CNN-TF-pm,11,0.206,8.79,5.1e-6,11/11
+KNET vs CRISPRon_base,11,0.071,5.12,4.1e-4,11/11
+KNET vs transformer_cls,11,0.046,3.78,0.0036,11/11
