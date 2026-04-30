@@ -34,6 +34,18 @@ mkdir -p "$LOGDIR/markov_task1" "$LOGDIR/markov_task3"
 PARTITIONS=(gpu2 gpu32)
 JOB_IDX=0
 TOTAL=0
+SKIP=0
+
+RESULTS_CSV=$LUSTRE/results/exp_results.csv
+
+is_done() {
+    # is_done MODEL CONFIG SAMPLE_SIZE SEED
+    # Returns 0 (true) if a matching row exists in exp_results.csv
+    local model=$1 config=$2 sample_size=$3 seed=$4
+    [ -f "$RESULTS_CSV" ] && \
+        grep -qE "^[^,]+,${model},${config},[^,]+,[^,]+,${sample_size},[^,]+,${seed}," \
+             "$RESULTS_CSV" 2>/dev/null
+}
 
 get_lr() {
     case "$1" in
@@ -76,6 +88,11 @@ get_1_25_args() {
 
 submit_job() {
     local task=$1 model=$2 config=$3 sample_size=$4 seed=$5
+    if is_done "$model" "$config" "$sample_size" "$seed"; then
+        echo "  SKIP $model/$config/n=$sample_size/seed=$seed (已完成)"
+        SKIP=$((SKIP + 1))
+        return
+    fi
     local lr=$(get_lr "$model")
     local batch=$(get_batch "$model")
     local part=${PARTITIONS[$((JOB_IDX % 2))]}
@@ -152,5 +169,5 @@ done
 echo "Markov Task 3: submitted."
 echo ""
 
-echo "=== Total submitted: $TOTAL jobs ==="
+echo "=== Total submitted: $TOTAL jobs (skip=$SKIP) ==="
 [[ $DRY_RUN -eq 0 ]] && squeue -u liut | tail -5

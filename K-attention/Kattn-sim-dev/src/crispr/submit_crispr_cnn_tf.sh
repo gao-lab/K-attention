@@ -1,17 +1,21 @@
 #!/bin/bash
-# 提交 cnn_transformer × 11 datasets × 5 folds × version=0 的 Slurm array job
+# submit_crispr_cnn_tf.sh — CRISPR CNN-TF Slurm 提交脚本
+# 11 datasets × 2 models (cnn_transformer, cnn_transformer_pm) × 5 folds = 110 runs
+# LR: 1e-3（见 job_crispr_cnn_tf.sh）
 #
-# 使用方式（在 luminary 上执行）：
-#   cd /lustre/grp/gglab/liut/K-attention/K-attention/Kattn-sim-dev/src/crispr
-#   bash submit_crispr_cnn_tf.sh
+# Usage (on luminary, from Kattn-sim-dev/src/crispr/):
+#   bash submit_crispr_cnn_tf.sh [--dry-run]
+
+DRY_RUN=0
+[[ "$1" == "--dry-run" ]] && DRY_RUN=1
 
 CODE_BASE=/lustre/grp/gglab/liut/K-attention/K-attention/Kattn-sim-dev
 DATA_BASE=/lustre/grp/gglab/liut/Kattn-sim-dev
 SCRIPT_DIR=$CODE_BASE/src/crispr
-TASK_LIST=$SCRIPT_DIR/crispr_task_list.txt
+JOB_SCRIPT=$SCRIPT_DIR/job_crispr_cnn_tf.sh
 LOGDIR=/lustre/grp/gglab/liut/logs
 
-mkdir -p "$LOGDIR"
+mkdir -p "$LOGDIR/crispr_cnn_tf"
 
 DATASETS=(
     chari2015Train293T
@@ -31,43 +35,36 @@ MODELS=(cnn_transformer cnn_transformer_pm)
 SETS=(set0 set1 set2 set3 set4)
 VERSION=0
 
-# ── Step 1: 生成任务列表（跳过已完成）──
-echo "生成任务列表..."
-> "$TASK_LIST"
+PARTITIONS=(gpu2 gpu32)
+JOB_IDX=0
+TOTAL=0
+SKIP=0
+
 for DS in "${DATASETS[@]}"; do
     for SET in "${SETS[@]}"; do
         for MODEL in "${MODELS[@]}"; do
             RESULT=$DATA_BASE/results/Crispr/$DS/$MODEL/$SET/$VERSION/test_metrics.csv
             if [ -f "$RESULT" ]; then
-                echo "  SKIP $DS $SET $MODEL (已完成)"
-            else
-                echo "$DS $SET $MODEL" >> "$TASK_LIST"
+                echo "  SKIP $DS/$SET/$MODEL (已完成)"
+                SKIP=$((SKIP + 1))
+                continue
             fi
+
+            part=${PARTITIONS[$((JOB_IDX % 2))]}
+            if [[ $DRY_RUN -eq 1 ]]; then
+                echo "[DRY] sbatch --partition=$part --output=$LOGDIR/crispr_cnn_tf/%j.out $JOB_SCRIPT $DS $MODEL $SET $VERSION"
+            else
+                sbatch --partition="$part" \
+                       --output="$LOGDIR/crispr_cnn_tf/%j.out" \
+                       "$JOB_SCRIPT" \
+                       "$DS" "$MODEL" "$SET" "$VERSION"
+            fi
+            JOB_IDX=$((JOB_IDX + 1))
+            TOTAL=$((TOTAL + 1))
         done
     done
 done
 
-N=$(wc -l < "$TASK_LIST")
-echo "待运行任务数：$N"
-if [ "$N" -eq 0 ]; then
-    echo "所有任务已完成，无需提交"
-    exit 0
-fi
-
-ARRAY_END=$((N - 1))
-HALF=$((N / 2))
-
-# ── Step 2: 分两半投到 gpu2 / gpu32 ──
-echo "提交 Slurm array job..."
-
-sbatch --partition=gpu2 \
-       --array=0-$((HALF - 1)) \
-       "$SCRIPT_DIR/job_crispr_cnn_tf.sh"
-
-sbatch --partition=gpu32 \
-       --array=${HALF}-${ARRAY_END} \
-       "$SCRIPT_DIR/job_crispr_cnn_tf.sh"
-
 echo ""
-echo "已提交。查看状态：squeue -u liut"
-echo "日志目录：$LOGDIR"
+echo "=== 提交完成: submitted=$TOTAL skip=$SKIP ==="
+[[ $DRY_RUN -eq 0 ]] && squeue -u liut | tail -5

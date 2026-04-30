@@ -594,11 +594,88 @@ def plot_rbfox2_kernel():
     plt.close(fig)
 
 
+# ── RC Tasks — three-panel learning curves (Task1/2/3) ─────────────────────
+
+def plot_rc_tasks(df: pd.DataFrame):
+    """Three-panel learning curves for RC Task 1/2/3 (random_fix2/fix1/rand)."""
+    rc_models = ["KNET_rc", "cnn_transformer_pm", "transformer_cls",
+                 "transformer_cls_kmer", "cnn", "mha"]
+    tasks = [
+        ("random_fix2", "RC Task 1 (40% PWM, random pos)"),
+        ("random_fix1", "RC Task 2 (20% PWM, random pos)"),
+        ("random_rand", "RC Task 3 (0% PWM, random pos)"),
+    ]
+    # Target sizes for RC tasks (1K, 2K, 5K, 20K, 50K, 100K)
+    RC_SIZES = [1000, 2000, 5000, 20000, 50000, 100000]
+
+    fig, axes = plt.subplots(1, 3, figsize=(fs.FIG_2COL_TALL[0] * 1.5, fs.FIG_2COL_TALL[1]))
+
+    for ax, (config, title) in zip(axes, tasks):
+        sub = df[
+            (df["test_config"] == config) &
+            (df["model_type"].isin(rc_models))
+        ].copy()
+        # Map sample_size=-1 (full dataset) to 100000
+        sub["plot_size"] = sub["sample_size"].replace(-1, 100000)
+        sub = sub[sub["plot_size"].isin(RC_SIZES)]
+        if sub.empty:
+            ax.set_title(f"{title}\n(no data)", fontsize=fs.FS_TITLE, pad=6)
+            ax.set_visible(True)
+        else:
+            _learning_curve_panel(ax, sub, rc_models, "plot_size", title)
+
+    fig.suptitle("RC task learning curves (mean ± 1 std, 5 seeds)", fontsize=fs.FS_TITLE, y=1.02)
+    fig.tight_layout(w_pad=3)
+    fs.save(fig, FIGURES_DIR / "rc_tasks_learning_curve")
+    plt.close(fig)
+
+
+# ── Markov Tasks — three-panel learning curves (Task1/2/3) ─────────────────
+
+def _mk_data_size(df: pd.DataFrame) -> pd.DataFrame:
+    """Resolve data_size: use sample_size if >0, else extract from config suffix."""
+    df = df.copy()
+    from_config = df["test_config"].str.extract(r"_(\d+)$")[0].astype(float).astype("Int64")
+    df["data_size"] = df["sample_size"].where(df["sample_size"] > 0, from_config)
+    return df
+
+
+def plot_markov_tasks(df: pd.DataFrame):
+    """Three-panel learning curves for Markov Task 1/2/3 (entropy 0.75/1.0/1.25)."""
+    mk_models = ["KNET", "cnn_transformer_pm", "transformer_cls",
+                 "transformer_cls_kmer", "cnn", "mha"]
+    tasks = [
+        ("markov_0_75", "Markov Task 1 (entropy=0.75, easy)"),
+        ("markov_1_0",  "Markov Task 2 (entropy=1.0, medium)"),
+        ("markov_1_25", "Markov Task 3 (entropy=1.25, hard)"),
+    ]
+
+    fig, axes = plt.subplots(1, 3, figsize=(fs.FIG_2COL_TALL[0] * 1.5, fs.FIG_2COL_TALL[1]))
+
+    for ax, (prefix, title) in zip(axes, tasks):
+        sub = df[
+            df["test_config"].str.startswith(prefix + "_") &
+            df["model_type"].isin(mk_models)
+        ].copy()
+        if sub.empty:
+            ax.set_title(f"{title}\n(no data)", fontsize=fs.FS_TITLE, pad=6)
+            ax.set_visible(True)
+        else:
+            sub = _mk_data_size(sub)
+            _learning_curve_panel(ax, sub, mk_models, "data_size", title)
+
+    fig.suptitle("Markov task learning curves (mean ± 1 std, 5 seeds)", fontsize=fs.FS_TITLE, y=1.02)
+    fig.tight_layout(w_pad=3)
+    fs.save(fig, FIGURES_DIR / "markov_tasks_learning_curve")
+    plt.close(fig)
+
+
 # ── Main ───────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description="Generate revision figures.")
-    parser.add_argument("--exp", choices=["A", "B", "C", "D", "E", "F", "RBFOX2"],
+    parser.add_argument("--exp", choices=["A", "B", "C", "D", "E", "F", "RBFOX2",
+                                          "RC_TASKS", "MK_TASKS"],
                         help="Experiment to plot (default: all)")
     args = parser.parse_args()
 
@@ -626,6 +703,12 @@ def main():
     if run_all or args.exp == "RBFOX2":
         print("Plotting RBFOX2 kernel_length sensitivity …")
         plot_rbfox2_kernel()
+    if run_all or args.exp == "RC_TASKS":
+        print("Plotting RC tasks learning curves …")
+        plot_rc_tasks(df)
+    if run_all or args.exp == "MK_TASKS":
+        print("Plotting Markov tasks learning curves …")
+        plot_markov_tasks(df)
 
     print(f"\nDone. Figures in: {FIGURES_DIR.resolve()}")
 
