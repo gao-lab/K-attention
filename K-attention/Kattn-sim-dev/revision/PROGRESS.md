@@ -14,6 +14,8 @@
 | **B** | R1-3 / R1-5 / R2-1 | 完整学习曲线（6模型 × 5数据量 × 3 seeds）| ✅ **Done** (5 seeds, 2026-04-24): RC 1k–100k × 5 seeds, Markov 2k–100k × 5 seeds | `run_expB_parallel.sh` / `submit_expB_ext.sh` |
 | **C** | R1-4 | 约束消融（KNET_rc vs KNET_uncons_rc）| ✅ **Done** (2026-04-24): 小样本差距显著（KNET_rc n=10k→0.991 vs KNET_uncons→0.539）| `run_expC.sh` / `run_expC_ablation.sh` |
 | **D（new）** | — | Simu16 学习曲线对比（KNET_rc vs CNN-TF，两台机器）| ✅ **Done** (2026-04-24) | `run_expD_192.sh` + cluster |
+| **H** | R1-1/R2-3 | RC 多难度学习曲线（random_fix2/fix1/rand，3 configs × 6 models × 5 seeds）| ✅ **Done** (random_fix1/fix2 complete) | `submit_rc_tasks.sh` |
+| **I** | R1-1/R2-3 | Markov 多熵值学习曲线（markov_0_75/1_0/1_25，3 configs × 6 models × 5 seeds）| 🔄 **Running**（KNET 缺失 0_75/1_25）| `submit_markov_tasks.sh` |
 | **E** | R1-2 | 缩小论断范围（"omics pattern recognition"）| ⏳ Pending（文字修改）| — |
 | **F** | R1-6 | 语言润色（口语表达）| ⏳ Pending（文字修改）| — |
 | **G** | R2-2 | 回复 Swin/ARConv（2D视觉架构非 omics 标准基线）| ⏳ Pending（文字回复）| — |
@@ -162,11 +164,93 @@ python3 analyze_results.py --exp D --merged
 
 ---
 
+## Exp H：RC Multi-Difficulty Learning Curves（✅ Done for fix2/fix1, ⏳ rand partial）
+
+**目标**：在 3 个 RC 难度级别上验证 KNET_rc 的数据效率优势（k=12, nk=64, 6 models × 6 data sizes × 5 seeds = 180 runs each）。
+
+### RC Task 1 — random_fix2（40% PWM, 177/180 runs, 5-seed mean AUROC）
+
+| 模型 | n=1k | n=2k | n=5k | n=20k | n=50k | n=100k |
+|------|------|------|------|-------|-------|--------|
+| **KNET_rc** | **0.898** | **0.982** | **0.991** | **0.994** | **0.998** | **0.998** |
+| cnn_transformer_pm | 0.619 | 0.720 | 0.818 | 0.933 | 0.979 | 0.988 |
+| transformer_cls | 0.568 | 0.540 | 0.553 | 0.896 | 0.988 | 0.991 |
+| cnn | 0.569 | 0.514 | 0.588 | 0.688 | 0.707 | 0.715 |
+| transformer_cls_kmer | 0.602 | 0.571 | 0.538 | 0.625 | 0.662 | 0.687 |
+| mha | 0.578 | 0.559 | 0.550 | 0.521 | 0.553 | 0.553 |
+
+**关键发现**：KNET_rc 在 n=1k 即达 0.898，远超所有 baseline（最高 0.619）。CNN-TF/transformer 需 n=50k–100k 才逼近 KNET。
+
+### RC Task 2 — random_fix1（20% PWM, 180/180 runs, 5-seed mean AUROC）
+
+| 模型 | n=1k | n=2k | n=5k | n=20k | n=50k | n=100k |
+|------|------|------|------|-------|-------|--------|
+| **KNET_rc** | **0.544** | **0.698** | **0.990** | **0.994** | **0.994** | **0.995** |
+| cnn_transformer_pm | 0.589 | 0.559 | 0.560 | 0.652 | 0.954 | 0.989 |
+| transformer_cls | 0.534 | 0.516 | 0.593 | 0.567 | 0.583 | **0.993** |
+| cnn | 0.504 | 0.484 | 0.574 | 0.535 | 0.562 | 0.567 |
+| mha | 0.506 | 0.540 | 0.575 | 0.544 | 0.553 | 0.552 |
+| transformer_cls_kmer | 0.538 | 0.526 | 0.514 | 0.533 | 0.550 | 0.529 |
+
+**关键发现**：KNET_rc n=1k→0.544（与 random 相近），但 n=5k 即跳至 0.990！CNN-TF/transformer 需 50k–100k 才追上。CNN/MHA/kmer 所有数据量均失败（<0.57）。KNET_rc 仅用 5k 样本就超越所有模型在 100k 的性能（除 TF 的 0.993 外）。
+
+### RC Task 3 — random_rand（0% PWM, ⏳ incomplete: 108/148+ runs）
+
+| 模型 | n=1k | n=2k | n=5k | n=20k | n=50k | n=100k |
+|------|------|------|------|-------|-------|--------|
+| **KNET_rc** | 0.599 | — | **0.982** | **0.993** | **0.993** | **0.994** |
+| cnn_transformer_pm | 0.579 | 0.567 | 0.506 | 0.528 | 0.667 | 0.806 |
+| transformer_cls | 0.630 | 0.566 | 0.541 | 0.534 | 0.558 | 0.567 |
+| transformer_cls_kmer | 0.519 | 0.536 | 0.526 | 0.545 | 0.522 | — |
+
+**关键发现**：在最难任务上，KNET_rc n=5k→0.982、n=20k→0.993。所有其他模型完全失败（cnn_transformer_pm 最高仅 0.806 at n=100k）。**但数据不完整**：KNET_rc 缺失 n=2k/10k 及部分 seeds；CNN/MHA 全部缺失。
+
+---
+
+## Exp I：Markov Multi-Entropy Learning Curves（🔄 Running，仅 3/6 模型有 0_75/1_25 数据）
+
+**目标**：在 3 个 Markov 熵值级别上验证 KNET 的数据效率（6 models × 6 data sizes × 5 seeds）。
+
+### Markov Task 1 — markov_0_75（H=0.75, easiest, ⏳ KNET/CNN-TF/TF 数据缺失）
+
+| 模型 | n=2k | n=5k | n=10k | n=20k | n=50k | n=100k |
+|------|------|------|-------|-------|-------|--------|
+| **cnn** | 0.723 | 0.858 | 0.897 | 0.925 | **0.943** | 0.940 |
+| transformer_cls_kmer | 0.769 | 0.843 | 0.883 | 0.906 | 0.923 | 0.902 |
+| mha | 0.565 | 0.566 | 0.624 | 0.605 | 0.619 | 0.552 |
+| KNET | — | — | — | — | — | — |
+
+### Markov Task 2 — markov_1_0（H=1.0, medium, ✅ 完成 from Exp B）
+
+| 模型 | n=2k | n=5k | n=10k | n=20k | n=50k | n=100k |
+|------|------|------|-------|-------|-------|--------|
+| **KNET** | 0.677 | 0.800 | **0.890** | 0.834 | 0.869 | 0.879 |
+| cnn | 0.548 | 0.636 | 0.795 | 0.788 | 0.854 | 0.868 |
+| cnn_transformer_pm | 0.553 | 0.728 | 0.816 | 0.788 | 0.845 | 0.855 |
+| transformer_cls_kmer | 0.538 | 0.730 | 0.823 | 0.768 | 0.815 | 0.826 |
+| transformer_cls | 0.574 | 0.558 | 0.537 | 0.711 | 0.831 | 0.828 |
+| mha | 0.590 | 0.547 | 0.546 | 0.544 | 0.607 | 0.613 |
+
+### Markov Task 3 — markov_1_25（H=1.25, hardest, ⏳ KNET/CNN-TF/TF 数据缺失）
+
+| 模型 | n=2k | n=5k | n=10k | n=20k | n=50k | n=100k |
+|------|------|------|-------|-------|-------|--------|
+| **cnn** | 0.522 | 0.566 | 0.628 | 0.629 | 0.755 | **0.759** |
+| transformer_cls_kmer | 0.548 | 0.599 | 0.593 | 0.660 | 0.730 | 0.731 |
+| mha | 0.496 | 0.530 | 0.593 | 0.566 | 0.557 | 0.539 |
+| KNET | — | — | — | — | — | — |
+
+**分析**：Markov H=0.75/1.25 的 KNET、cnn_transformer_pm、transformer_cls 数据正在集群运行中（`squeue -u liut` 查看）。当前可用的 3 个模型（cnn/mha/transformer_cls_kmer）显示 H=1.25 对所有模型都极具挑战性（最高 cnn 仅 0.759 at n=100k），而 H=0.75 相对容易（cnn 达 0.943）。
+
+---
+
 ## 下一步
 
-1. **绘图**：基于 `exp_results_merged.csv` 生成 Exp A/B/C/D 论文图
-2. **文字修改**（E/F/G）：缩小论断范围、语言润色、回复 Swin/ARConv
-3. **论文 Revision 提交**
+1. **等待 Markov Tasks 完成**：H=0.75/1.25 缺 KNET/cnn_transformer_pm/transformer_cls 数据
+2. **等待 RC Task 3 补齐**：random_rand 缺 KNET_rc 剩余 seeds + CNN/MHA 数据
+3. **绘图**：基于完整 `exp_results_merged.csv` 生成所有实验论文图
+4. **文字修改**（E/F/G）：缩小论断范围、语言润色、回复 Swin/ARConv
+5. **论文 Revision 提交**
 
 ---
 

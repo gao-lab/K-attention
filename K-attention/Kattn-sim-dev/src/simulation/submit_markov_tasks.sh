@@ -8,6 +8,11 @@
 # Sample sizes: 2K, 5K, 10K, 20K, 50K, 100K
 # Each size maps to a (test_config, sample_size) pair — see get_config_args() below.
 #
+# Model-specific resources:
+#   KNET*             → --time=16:00:00 --mem=64G
+#   transformer*      → --time=12:00:00 --mem=48G
+#   cnn, mha, cnn_*   → --time=08:00:00 --mem=32G
+#
 # Usage (on luminary, from Kattn-sim-dev/src/simulation/):
 #   bash submit_markov_tasks.sh [--dry-run]
 
@@ -23,12 +28,12 @@ export KATTN_SRC_DIR=$LUSTRE/src
 export KATTN_RESOURCES_DIR=$LUSTRE/resources
 export HF_DATASETS_CACHE=$LUSTRE/.hf_cache
 export HF_DATASETS_OFFLINE=1
-export PYTHONPATH=$KATTN_SRC_DIR:$(echo $PYTHONPATH | tr ':' '\n' | grep -v 'Kattn-sim-dev/src' | tr '\n' ':')
+export PYTHONPATH=$KATTN_SRC_DIR:$(echo "$PYTHONPATH" | tr ':' '\n' | grep -v 'Kattn-sim-dev/src' | tr '\n' ':')
 
 cd "$SIMDIR" || exit 1
 
 # ── Log subdirectories ──────────────────────────────────────────────────────
-mkdir -p "$LOGDIR/markov_task1" "$LOGDIR/markov_task3"
+mkdir -p "$LOGDIR/markov_task1" "$LOGDIR/markov_task2" "$LOGDIR/markov_task3"
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 TOTAL=0
@@ -40,9 +45,12 @@ is_done() {
     # is_done MODEL CONFIG SAMPLE_SIZE SEED
     # Returns 0 (true) if a matching row exists in exp_results.csv
     local model=$1 config=$2 sample_size=$3 seed=$4
-    [ -f "$RESULTS_CSV" ] && \
-        grep -qE "^[^,]+,${model},${config},[^,]+,[^,]+,${sample_size},[^,]+,${seed}," \
-             "$RESULTS_CSV" 2>/dev/null
+    if [ ! -f "$RESULTS_CSV" ]; then
+        return 1
+    fi
+    # CSV columns: timestamp,model_type,test_config,kernel_size,num_kernels,sample_size,max_lr,version,val_auroc
+    grep -qE "^[^,]+,${model},${config},[^,]+,[^,]+,${sample_size},[^,]+,${seed}," \
+         "$RESULTS_CSV" 2>/dev/null
 }
 
 get_lr() {
@@ -57,6 +65,36 @@ get_batch() {
     case "$1" in
         transformer*) echo "128" ;;
         *)            echo "512" ;;
+    esac
+}
+
+get_time() {
+    # KNET models need longer training time
+    case "$1" in
+        KNET*)        echo "16:00:00" ;;
+        transformer*) echo "12:00:00" ;;
+        *)            echo "08:00:00" ;;
+    esac
+}
+
+get_mem() {
+    case "$1" in
+        KNET*)        echo "64G" ;;
+        transformer*) echo "48G" ;;
+        *)            echo "32G" ;;
+    esac
+}
+
+# Returns "TEST_CONFIG SAMPLE_SIZE" for markov_1_0 at given data size
+# Each size has its own dedicated dataset on luminary
+get_1_0_args() {
+    case "$1" in
+        2000)   echo "markov_1_0_5000 2000" ;;
+        5000)   echo "markov_1_0_5000 -1" ;;
+        10000)  echo "markov_1_0_10000 -1" ;;
+        20000)  echo "markov_1_0_20000 -1" ;;
+        50000)  echo "markov_1_0_50000 -1" ;;
+        100000) echo "markov_1_0_100000 -1" ;;
     esac
 }
 
@@ -93,11 +131,15 @@ submit_job() {
     fi
     local lr=$(get_lr "$model")
     local batch=$(get_batch "$model")
+    local time=$(get_time "$model")
+    local mem=$(get_mem "$model")
     local outfile="$LOGDIR/$task/%j.out"
     if [[ $DRY_RUN -eq 1 ]]; then
-        echo "[DRY] sbatch --partition=gpu2,gpu32 --output=$outfile $JOB_SCRIPT $model $config $sample_size $seed $lr $batch"
+        echo "[DRY] sbatch --partition=gpu2,gpu32 --time=$time --mem=$mem --output=$outfile $JOB_SCRIPT $model $config $sample_size $seed $lr $batch"
     else
         sbatch --partition=gpu2,gpu32 \
+               --time="$time" \
+               --mem="$mem" \
                --output="$outfile" \
                "$JOB_SCRIPT" \
                "$model" "$config" "$sample_size" "$seed" "$lr" "$batch"
@@ -110,21 +152,16 @@ ALL_SEEDS=(0 1 2 3 4)
 ALL_SIZES=(2000 5000 10000 20000 50000 100000)
 
 # ── Pre-cache datasets ───────────────────────────────────────────────────────
-echo "=== Pre-caching datasets (markov_0_75, markov_1_25) ==="
+echo "=== Pre-caching datasets (markov_0_75, markov_1_0, markov_1_25) ==="
 for n in "${ALL_SIZES[@]}"; do
-    args_0_75=$(get_0_75_args "$n")
-    cfg=$(echo $args_0_75 | cut -d' ' -f1)
-    ss=$(echo $args_0_75 | cut -d' ' -f2)
-    echo "  caching $cfg n=$ss ..."
-    python run_bmk.py --model-type KNET --test-config "$cfg" \
-        --sample-size "$ss" --cache-run 2>&1 | tail -1
-
-    args_1_25=$(get_1_25_args "$n")
-    cfg=$(echo $args_1_25 | cut -d' ' -f1)
-    ss=$(echo $args_1_25 | cut -d' ' -f2)
-    echo "  caching $cfg n=$ss ..."
-    python run_bmk.py --model-type KNET --test-config "$cfg" \
-        --sample-size "$ss" --cache-run 2>&1 | tail -1
+    for getter in get_0_75_args get_1_0_args get_1_25_args; do
+        args=$($getter "$n")
+        cfg=$(echo "$args" | cut -d' ' -f1)
+        ss=$(echo "$args"  | cut -d' ' -f2)
+        echo "  caching $cfg n=$ss ..."
+        python run_bmk.py --model-type KNET --test-config "$cfg" \
+            --sample-size "$ss" --cache-run 2>&1 | tail -1
+    done
 done
 echo "Cache done."
 echo ""
@@ -145,9 +182,19 @@ echo "Markov Task 1: submitted."
 echo ""
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Markov Task 2 — markov_1_0 — ALREADY COMPLETE, skipped
+# Markov Task 2 — markov_1_0 (entropy=1.0, medium) — 180 runs, only
+# full-dataset seeds 0/1/2 missing (seeds 3/4 present from expB_ext)
 # ═══════════════════════════════════════════════════════════════════════════
-echo "=== Markov Task 2 (markov_1_0): already complete, skipped ==="
+echo "=== Submitting Markov Task 2: markov_1_0 (180 runs, filling missing seeds) ==="
+for n in "${ALL_SIZES[@]}"; do
+    read -r cfg ss <<< "$(get_1_0_args "$n")"
+    for seed in "${ALL_SEEDS[@]}"; do
+        for model in "${MK_MODELS[@]}"; do
+            submit_job "markov_task2" "$model" "$cfg" "$ss" "$seed"
+        done
+    done
+done
+echo "Markov Task 2: submitted."
 echo ""
 
 # ═══════════════════════════════════════════════════════════════════════════

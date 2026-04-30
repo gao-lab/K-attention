@@ -1,5 +1,5 @@
 # Revision Status Snapshot — BIB-26-0525
-*Last updated: 2026-04-24 (all experiments complete)*
+*Last updated: 2026-04-30 (RC Tasks 1/2 complete, Markov in progress)*
 
 This file is a machine-readable snapshot for agents picking up this work.
 Full detail: `revision/PROGRESS.md`
@@ -11,9 +11,11 @@ Full detail: `revision/PROGRESS.md`
 | Exp | Description | Status | Seeds done | Pending action |
 |-----|-------------|--------|-----------|----------------|
 | A | Hyperparameter scan (kernel_size × num_kernels) | ✅ Done | seeds 0,1,2 (120 runs) | — |
-| B | Learning curves (6 models × RC 1k–100k + Markov 2k–100k × 5 seeds) | ✅ Done | seeds 0–4 | Re-plot with new data |
-| C | Constraint ablation (KNET vs KNET_uncons, small-sample) | ✅ Done | seeds 0,1,2 | Re-plot with extended results |
-| D | Simu16 learning curves (KNET_rc vs CNN-TF) | ✅ Done | seeds 0,1,2 | — |
+| B | Learning curves (abs-ran_fix2 + markov_1_0) | ✅ Done | seeds 0–4 | — |
+| C | Constraint ablation (KNET vs KNET_uncons) | ✅ Done | seeds 0–4 | — |
+| D | Simu16 learning curves (KNET_rc vs CNN-TF) | ✅ Done | seeds 0–2 | — |
+| H | RC multi-difficulty (random_fix2/fix1/rand) | 🔄 partial | fix2:177/180, fix1:180/180, rand:108/148+ | Wait for rand completion + CNN/MHA on rand |
+| I | Markov multi-entropy (0_75/1_0/1_25) | 🔄 partial | 1_0:complete; 0_75/1_25: only 3/6 models | Wait for KNET/cnn_transformer_pm/transformer_cls |
 | E | Narrow claims ("omics pattern recognition") | ⏳ Pending | — | Text revision only |
 | F | Language polish | ⏳ Pending | — | Text revision only |
 | G | Reply re Swin/ARConv | ⏳ Pending | — | Text reply only |
@@ -24,7 +26,7 @@ Full detail: `revision/PROGRESS.md`
 
 | File | Location | Rows | Notes |
 |------|----------|------|-------|
-| `exp_results_merged.csv` | `results/exp_results_merged.csv` | 607 | All experiments, all seeds |
+| `exp_results_merged.csv` | `results/exp_results_merged.csv` | 855 | All experiments, 2026-04-30 merge |
 
 ---
 
@@ -128,16 +130,20 @@ All figures at `revision/figures/`. **Exp B and C need re-plotting with new 5-se
 | Main compute | 192.168.3.17 (liut), RTX 4090, direct SSH |
 | Cluster | luminary (172.18.18.7), via bastion 172.18.18.11, Slurm |
 | Conda env | `kattn-sim` at `/rd1/liut/miniconda3/envs/kattn-sim/` (on 192.168.3.17) |
-| Results CSV | `results/exp_results_merged.csv` (local, 607 rows) |
+| Results CSV | `results/exp_results_merged.csv` (local, 855 rows) |
+| Analysis script | `src/simulation/analyze_results.py` (updated 2026-04-30 for multi-task) |
+| Merge script | `src/simulation/merge_results.py` |
 | Figures | `revision/figures/` (local) |
 | Plot script | `src/simulation/plot_revision.py` (use kattn-sim Python on 192.168.3.17) |
-| Style module | `src/simulation/figure_style.py` (Wong palette, fonttype=42) |
 
 ---
 
 ## Immediate Next Actions
 
-1. **Text revisions E/F/G** — no experiments needed, only manuscript edits
-   - E: Narrow claims to "omics pattern recognition"  
+1. **Check cluster progress**: Markov H=0.75/1.25 KNET/cnn_transformer_pm/transformer_cls still running (`squeue -u liut` on luminary)
+2. **Re-merge + re-analyze** after new data arrives: `python3 analyze_results.py --merged --completeness`
+3. **Generate figures** for new experiments: Exp H (RC multi-difficulty), Exp I (Markov multi-entropy)
+4. **Text revisions E/F/G** — manuscript edits
+   - E: Narrow claims to "omics pattern recognition"
    - F: Language polish
    - G: Reply re Swin/ARConv (2D visual architecture, not omics standard baseline)
