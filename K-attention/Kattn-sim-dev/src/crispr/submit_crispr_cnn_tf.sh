@@ -35,8 +35,6 @@ MODELS=(cnn_transformer cnn_transformer_pm)
 SETS=(set0 set1 set2 set3 set4)
 VERSION=0
 
-PARTITIONS=(gpu2 gpu32)
-JOB_IDX=0
 TOTAL=0
 SKIP=0
 
@@ -50,16 +48,14 @@ for DS in "${DATASETS[@]}"; do
                 continue
             fi
 
-            part=${PARTITIONS[$((JOB_IDX % 2))]}
             if [[ $DRY_RUN -eq 1 ]]; then
-                echo "[DRY] sbatch --partition=$part --output=$LOGDIR/crispr_cnn_tf/%j.out $JOB_SCRIPT $DS $MODEL $SET $VERSION"
+                echo "[DRY] sbatch --partition=gpu2,gpu32 --output=$LOGDIR/crispr_cnn_tf/%j.out $JOB_SCRIPT $DS $MODEL $SET $VERSION"
             else
-                sbatch --partition="$part" \
+                sbatch --partition=gpu2,gpu32 \
                        --output="$LOGDIR/crispr_cnn_tf/%j.out" \
                        "$JOB_SCRIPT" \
                        "$DS" "$MODEL" "$SET" "$VERSION"
             fi
-            JOB_IDX=$((JOB_IDX + 1))
             TOTAL=$((TOTAL + 1))
         done
     done
