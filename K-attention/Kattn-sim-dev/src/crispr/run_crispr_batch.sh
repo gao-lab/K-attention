@@ -74,7 +74,7 @@ for DS in "${DATASETS[@]}"; do
             log "RUN  $DS / $SET / $MODEL ..."
             if python run_Crispr_Regulation.py \
                 -m "$MODEL" -c "$DS" -s $SET \
-                -v $VERSION --max-epochs 200 --patience 20 --max-lr 1e-3 \
+                -v $VERSION --max-epochs 200 --patience 20 --max-lr 1e-2 \
                 2>&1 | tee -a /tmp/crispr_cnn_tf.log | tail -5; then
                 log "DONE $DS/$SET/$MODEL"
             else
