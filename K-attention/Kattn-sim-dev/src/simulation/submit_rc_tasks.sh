@@ -30,8 +30,6 @@ cd "$SIMDIR" || exit 1
 mkdir -p "$LOGDIR/rc_task1" "$LOGDIR/rc_task2" "$LOGDIR/rc_task3"
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
-PARTITIONS=(gpu2 gpu32)
-JOB_IDX=0
 TOTAL=0
 SKIP=0
 
@@ -70,17 +68,15 @@ submit_job() {
     fi
     local lr=$(get_lr "$model")
     local batch=$(get_batch "$model")
-    local part=${PARTITIONS[$((JOB_IDX % 2))]}
     local outfile="$LOGDIR/$task/%j.out"
     if [[ $DRY_RUN -eq 1 ]]; then
-        echo "[DRY] sbatch --partition=$part --output=$outfile $JOB_SCRIPT $model $config $sample_size $seed $lr $batch"
+        echo "[DRY] sbatch --partition=gpu2,gpu32 --output=$outfile $JOB_SCRIPT $model $config $sample_size $seed $lr $batch"
     else
-        sbatch --partition="$part" \
+        sbatch --partition=gpu2,gpu32 \
                --output="$outfile" \
                "$JOB_SCRIPT" \
                "$model" "$config" "$sample_size" "$seed" "$lr" "$batch"
     fi
-    JOB_IDX=$((JOB_IDX + 1))
     TOTAL=$((TOTAL + 1))
 }
 
